@@ -57,7 +57,7 @@
         const height = window.innerHeight;
         let data = { nodes: [], links: [] };
         let themes = [];
-        let roles = [];
+        let roles = ["volunteer", "friend", "service provider", "supporter"];
         let locations = [];
 
         const svg = d3.select("#visualization")
@@ -75,7 +75,6 @@
 
         d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv").then(function(csvData) {
             processData(csvData);
-            createThemeHubs();
             drawNetwork();
             setupControls();
         }).catch(function(error) {
@@ -84,46 +83,22 @@
 
         function processData(csvData) {
             themes = [...new Set(csvData.flatMap(d => d.Tags.split(',').map(t => t.trim())))];
-            roles = [...new Set(csvData.map(d => d.Category))];
             locations = [...new Set(csvData.map(d => d.Location))];
 
             data.nodes = csvData.map((d, i) => ({
                 id: d.Name,
-                role: d.Category,
+                role: assignRole(d.Category),
                 themes: d.Tags.split(',').map(t => t.trim()),
                 location: d.Location,
                 quotes: [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']].filter(q => q),
                 radius: 5 + Math.random() * 5 // Vary size based on impact (random for now)
             }));
 
-            // Create theme hub nodes
-            themes.forEach(theme => {
-                data.nodes.push({
-                    id: `hub-${theme}`,
-                    isHub: true,
-                    theme: theme,
-                    radius: 15
-                });
-            });
-
-            // Create links
-            data.nodes.forEach(node => {
-                if (!node.isHub) {
-                    node.themes.forEach(theme => {
-                        data.links.push({
-                            source: node.id,
-                            target: `hub-${theme}`,
-                            value: 1
-                        });
-                    });
-                }
-            });
-
             // Create links between nodes with shared themes
             for (let i = 0; i < data.nodes.length; i++) {
                 for (let j = i + 1; j < data.nodes.length; j++) {
-                    const sharedThemes = data.nodes[i].themes?.filter(theme => data.nodes[j].themes?.includes(theme));
-                    if (sharedThemes && sharedThemes.length > 0) {
+                    const sharedThemes = data.nodes[i].themes.filter(theme => data.nodes[j].themes.includes(theme));
+                    if (sharedThemes.length > 0) {
                         data.links.push({
                             source: data.nodes[i].id,
                             target: data.nodes[j].id,
@@ -134,17 +109,13 @@
             }
         }
 
-        function createThemeHubs() {
-            const hubRadius = Math.min(width, height) / 4;
-            const angleStep = (2 * Math.PI) / themes.length;
-            themes.forEach((theme, i) => {
-                const angle = i * angleStep;
-                const x = width / 2 + hubRadius * Math.cos(angle);
-                const y = height / 2 + hubRadius * Math.sin(angle);
-                const hub = data.nodes.find(n => n.id === `hub-${theme}`);
-                hub.fx = x;
-                hub.fy = y;
-            });
+        function assignRole(category) {
+            category = category.toLowerCase();
+            if (roles.includes(category)) {
+                return category;
+            }
+            // If the category doesn't match any of the specified roles, assign "supporter" as default
+            return "supporter";
         }
 
         function drawNetwork() {
@@ -161,7 +132,7 @@
                 .data(data.nodes)
                 .enter().append("circle")
                 .attr("r", d => d.radius)
-                .attr("fill", d => d.isHub ? colorScale(d.theme) : (d.role ? colorScale(d.role) : "#ccc"))
+                .attr("fill", d => colorScale(d.role))
                 .call(d3.drag()
                     .on("start", dragstarted)
                     .on("drag", dragged)
@@ -206,10 +177,8 @@
 
         function dragended(event) {
             if (!event.active) simulation.alphaTarget(0);
-            if (!event.subject.isHub) {
-                event.subject.fx = null;
-                event.subject.fy = null;
-            }
+            event.subject.fx = null;
+            event.subject.fy = null;
         }
 
         function setupControls() {
@@ -241,7 +210,6 @@
 
             svg.selectAll("circle")
                 .attr("opacity", d => {
-                    if (d.isHub) return 1;
                     const themeMatch = selectedTheme === "all" || d.themes.includes(selectedTheme);
                     const roleMatch = selectedRole === "all" || d.role === selectedRole;
                     const locationMatch = selectedLocation === "all" || d.location === selectedLocation;
@@ -257,8 +225,6 @@
         }
 
         function showTooltip(event, d) {
-            if (d.isHub) return;
-
             const tooltip = d3.select("body").append("div")
                 .attr("class", "tooltip")
                 .style("left", (event.pageX + 10) + "px")
@@ -278,8 +244,6 @@
         }
 
         function showStory(event, d) {
-            if (d.isHub) return;
-
             const storyPanel = d3.select("#storyPanel");
             storyPanel.html(`
                 <h3>${d.id}'s Story</h3>
