@@ -10,7 +10,9 @@
         #visualization { width: 100%; height: 80vh; border: 1px solid #ddd; }
         .node { stroke: #fff; stroke-width: 1.5px; }
         .link { stroke: #999; stroke-opacity: 0.6; }
-        .tooltip { position: absolute; background: white; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
+        .tooltip { position: absolute; background: white; border: 1px solid #ddd; padding: 10px; border-radius: 5px; pointer-events: none; }
+        .legend { font-size: 12px; }
+        .legend rect { stroke-width: 2; }
     </style>
 </head>
 <body>
@@ -88,6 +90,7 @@
                 .attr("height", height);
 
             const link = svg.append("g")
+                .attr("class", "links")
                 .selectAll("line")
                 .data(data.links)
                 .enter().append("line")
@@ -95,11 +98,12 @@
                 .attr("stroke-width", d => Math.sqrt(d.value));
 
             const node = svg.append("g")
+                .attr("class", "nodes")
                 .selectAll("circle")
                 .data(data.nodes)
                 .enter().append("circle")
                 .attr("class", "node")
-                .attr("r", 5)
+                .attr("r", d => d.type === 'person' ? 10 : 5)
                 .attr("fill", d => color(d.group))
                 .call(d3.drag()
                     .on("start", dragstarted)
@@ -107,7 +111,7 @@
                     .on("end", dragended));
 
             node.append("title")
-                .text(d => d.id);
+                .text(d => `${d.id} (${d.type})`);
 
             simulation.on("tick", () => {
                 link
@@ -155,15 +159,43 @@
                 tooltip.transition()
                     .duration(200)
                     .style("opacity", .9);
-                tooltip.html(d.id + "<br/>" + d.type)
+                tooltip.html(`${d.id} (${d.type})`)
                     .style("left", (event.pageX) + "px")
                     .style("top", (event.pageY - 28) + "px");
             })
-            .on("mouseout", (d) => {
+            .on("mouseout", () => {
                 tooltip.transition()
                     .duration(500)
                     .style("opacity", 0);
             });
+
+            // Legend
+            const legend = svg.append("g")
+                .attr("class", "legend")
+                .attr("transform", `translate(${width - 150}, 20)`)
+                .selectAll("g")
+                .data(color.domain())
+                .enter().append("g")
+                .attr("transform", (d, i) => `translate(0, ${i * 20})`);
+
+            legend.append("rect")
+                .attr("width", 18)
+                .attr("height", 18)
+                .attr("fill", color);
+
+            legend.append("text")
+                .attr("x", 24)
+                .attr("y", 9)
+                .attr("dy", "0.35em")
+                .text(d => {
+                    switch (d) {
+                        case 1: return "Person";
+                        case 2: return "Location";
+                        case 3: return "State";
+                        case 4: return "Category";
+                        case 5: return "Quote";
+                    }
+                });
         }
     </script>
 </body>
