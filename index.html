@@ -1,6 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orange Sky Network Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-cloud@1.2.5/build/d3.layout.cloud.min.js"></script>
+    <style>
+        #visualization {
+            width: 100%;
+            height: 600px;
+        }
+        .tooltip {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #ddd;
+            padding: 10px;
+            pointer-events: none;
+        }
+        .word-cloud {
+            width: 300px;
+            height: 200px;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="filters">
+        <select id="locationFilter"></select>
+        <select id="stateFilter"></select>
+        <select id="tagFilter"></select>
+        <select id="themeFilter"></select>
+        <select id="roleFilter"></select>
+    </div>
+    <div id="visualization"></div>
+    <div id="wordCloud" class="word-cloud"></div>
+
     <script>
         let data = { nodes: [], links: [] };
         let allData = { nodes: [], links: [] };
+        let themes = ["Dignity", "Connection", "Community", "Impact", "Support"];
 
         d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv").then(function(csvData) {
             processData(csvData);
@@ -10,62 +51,66 @@
         });
 
         function processData(csvData) {
-            data = { nodes: [], links: [] }; // Reset data
+            data = { nodes: [], links: [] };
             let tagsSet = new Set();
 
             csvData.forEach(function(d) {
-                // Add person node
-                addNode(d.Name, 'person', 1, d.Location, d.State, d.Tags, [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']]);
-                
-                // Add location node
+                let nodeThemes = assignThemes(d);
+                addNode(d.Name, 'person', 1, d.Location, d.State, d.Tags, nodeThemes, [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']]);
                 addNode(d.Location, 'location', 2);
-                
-                // Add state node
                 addNode(d.State, 'state', 3);
-                
-                // Add category node
                 addNode(d.Category, 'category', 4);
-                
-                // Add tags nodes
+
                 let tags = d.Tags ? d.Tags.split(',') : [];
                 tags.forEach(tag => {
-                    addNode(tag.trim(), 'tag', 5);
-                    tagsSet.add(tag.trim());
-                    addLink(d.Name, tag.trim(), 1);
+                    tag = tag.trim();
+                    addNode(tag, 'tag', 5);
+                    tagsSet.add(tag);
+                    addLink(d.Name, tag, calculateLinkStrength(d.Name, tag));
                 });
 
-                // Add quote nodes and links
-                for (let i = 1; i <= 4; i++) {
-                    if (d[`Quote ${i}`]) {
-                        const quoteId = `Quote${d.Name}_${i}`;
-                        addNode(quoteId, 'quote', 6);
-                        addLink(d.Name, quoteId, 1);
-                    }
-                }
-                
-                // Add links
-                addLink(d.Name, d.Location, 1);
-                addLink(d.Name, d.State, 1);
-                addLink(d.Name, d.Category, 1);
+                addLink(d.Name, d.Location, calculateLinkStrength(d.Name, d.Location));
+                addLink(d.Name, d.State, calculateLinkStrength(d.Name, d.State));
+                addLink(d.Name, d.Category, calculateLinkStrength(d.Name, d.Category));
             });
 
-            allData = JSON.parse(JSON.stringify(data)); // Store a copy of the complete data
+            allData = JSON.parse(JSON.stringify(data));
             updateVisualization();
-
-            populateTagFilter(tagsSet);
+            updateWordCloud();
         }
 
-        function addNode(id, type, group, location = null, state = null, tags = null, quotes = []) {
+        function assignThemes(d) {
+            let nodeThemes = [];
+            if (d.Tags && d.Tags.toLowerCase().includes("dignity")) nodeThemes.push("Dignity");
+            if (d.Tags && d.Tags.toLowerCase().includes("connection")) nodeThemes.push("Connection");
+            if (d.Tags && d.Tags.toLowerCase().includes("community")) nodeThemes.push("Community");
+            if (d.Tags && d.Tags.toLowerCase().includes("impact")) nodeThemes.push("Impact");
+            if (d.Tags && d.Tags.toLowerCase().includes("support")) nodeThemes.push("Support");
+            return nodeThemes;
+        }
+
+        function calculateLinkStrength(source, target) {
+            let sourceNode = data.nodes.find(n => n.id === source);
+            let targetNode = data.nodes.find(n => n.id === target);
+            if (sourceNode && targetNode) {
+                let sharedThemes = sourceNode.themes.filter(theme => targetNode.themes.includes(theme));
+                return 1 + sharedThemes.length * 0.5;
+            }
+            return 1;
+        }
+
+        function addNode(id, type, group, location = null, state = null, tags = null, themes = [], quotes = []) {
             if (!data.nodes.some(n => n.id === id)) {
-                data.nodes.push({ id: id, type: type, group: group, location: location, state: state, tags: tags, quotes: quotes });
+                data.nodes.push({ id, type, group, location, state, tags, themes, quotes });
             }
         }
 
         function addLink(source, target, value) {
             if (!data.links.some(l => l.source === source && l.target === target)) {
-                data.links.push({ source: source, target: target, value: value });
+                data.links.push({ source, target, value });
             }
         }
+
         function updateVisualization() {
             d3.select("#visualization").selectAll("*").remove();
 
@@ -75,9 +120,10 @@
             const color = d3.scaleOrdinal(d3.schemeCategory10);
 
             const simulation = d3.forceSimulation(data.nodes)
-                .force("link", d3.forceLink(data.links).id(d => d.id))
-                .force("charge", d3.forceManyBody())
-                .force("center", d3.forceCenter(width / 2, height / 2));
+                .force("link", d3.forceLink(data.links).id(d => d.id).strength(d => d.value))
+                .force("charge", d3.forceManyBody().strength(-100))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("cluster", forceCluster());
 
             const svg = d3.select("#visualization")
                 .append("svg")
@@ -89,33 +135,33 @@
                 .selectAll("line")
                 .data(data.links)
                 .enter().append("line")
-                .attr("class", "link")
-                .attr("stroke-width", d => Math.sqrt(d.value));
+                .attr("stroke-width", d => Math.sqrt(d.value))
+                .attr("stroke-opacity", 0.6);
 
             const node = svg.append("g")
                 .attr("class", "nodes")
                 .selectAll("circle")
                 .data(data.nodes)
                 .enter().append("circle")
-                .attr("class", "node")
                 .attr("r", d => d.type === 'person' ? 10 : 5)
-                .attr("fill", d => color(d.group))
+                .attr("fill", d => color(d.themes[0] || d.group))
                 .call(d3.drag()
                     .on("start", dragstarted)
                     .on("drag", dragged)
                     .on("end", dragended));
 
-            // Add labels to nodes
-            const text = svg.append("g")
+            const label = svg.append("g")
                 .attr("class", "labels")
                 .selectAll("text")
                 .data(data.nodes)
                 .enter().append("text")
-                .attr("dy", -3)
-                .text(d => d.type === 'person' ? d.id : '');
+                .attr("dy", ".35em")
+                .text(d => d.id)
+                .style("font-size", "8px")
+                .style("opacity", 0.7);
 
             node.append("title")
-                .text(d => `${d.id} (${d.type})`);
+                .text(d => `${d.id} (${d.type})\nThemes: ${d.themes.join(", ")}`);
 
             simulation.on("tick", () => {
                 link
@@ -128,7 +174,7 @@
                     .attr("cx", d => d.x)
                     .attr("cy", d => d.y);
 
-                text
+                label
                     .attr("x", d => d.x)
                     .attr("y", d => d.y);
             });
@@ -150,7 +196,6 @@
                 event.subject.fy = null;
             }
 
-            // Add zoom capabilities 
             const zoom = d3.zoom()
                 .on('zoom', (event) => {
                     svg.attr('transform', event.transform);
@@ -158,7 +203,6 @@
 
             svg.call(zoom);
 
-            // Tooltip
             const tooltip = d3.select("body").append("div")
                 .attr("class", "tooltip")
                 .style("opacity", 0);
@@ -167,7 +211,7 @@
                 tooltip.transition()
                     .duration(200)
                     .style("opacity", .9);
-                tooltip.html(`${d.id} (${d.type})<br>Location: ${d.location || 'N/A'}<br>State: ${d.state || 'N/A'}<br>Tags: ${d.tags || 'N/A'}<br>Quotes: ${d.quotes.filter(q => q).join('<br>')}`)
+                tooltip.html(`${d.id} (${d.type})<br>Location: ${d.location || 'N/A'}<br>State: ${d.state || 'N/A'}<br>Tags: ${d.tags || 'N/A'}<br>Themes: ${d.themes.join(", ")}<br>Quotes: ${d.quotes.filter(q => q).join('<br>')}`)
                     .style("left", (event.pageX) + "px")
                     .style("top", (event.pageY - 28) + "px");
             })
@@ -177,84 +221,117 @@
                     .style("opacity", 0);
             });
 
-            // Legend
-            const legend = svg.append("g")
-                .attr("class", "legend")
-                .attr("transform", `translate(${width - 150}, 20)`)
-                .selectAll("g")
-                .data(color.domain())
-                .enter().append("g")
-                .attr("transform", (d, i) => `translate(0, ${i * 20})`);
+            function forceCluster() {
+                const strength = 0.2;
+                let nodes;
 
-            legend.append("rect")
-                .attr("width", 18)
-                .attr("height", 18)
-                .attr("fill", color);
+                function force(alpha) {
+                    const centroids = d3.rollup(nodes, v => ({
+                        x: d3.mean(v, d => d.x),
+                        y: d3.mean(v, d => d.y)
+                    }), d => d.themes[0]);
 
-            legend.append("text")
-                .attr("x", 24)
-                .attr("y", 9)
-                .attr("dy", "0.35em")
-                .text(d => {
-                    switch (d) {
-                        case 1: return "Person";
-                        case 2: return "Location";
-                        case 3: return "State";
-                        case 4: return "Category";
-                        case 5: return "Tag";
-                        case 6: return "Quote";
-                    }
-                });
+                    nodes.forEach(d => {
+                        const centroid = centroids.get(d.themes[0]);
+                        if (centroid) {
+                            d.vx += (centroid.x - d.x) * strength * alpha;
+                            d.vy += (centroid.y - d.y) * strength * alpha;
+                        }
+                    });
+                }
+
+                force.initialize = _ => nodes = _;
+
+                return force;
+            }
         }
+
+        function updateWordCloud() {
+            const words = data.nodes.flatMap(d => d.quotes.filter(q => q).join(" ").split(/\s+/));
+            const wordFreq = d3.rollups(words, v => v.length, w => w.toLowerCase())
+                .sort((a, b) => d3.descending(a[1], b[1]))
+                .slice(0, 50);
+
+            const fontSize = d3.scaleLinear()
+                .domain([0, d3.max(wordFreq, d => d[1])])
+                .range([10, 50]);
+
+            d3.layout.cloud()
+                .size([300, 200])
+                .words(wordFreq.map(d => ({text: d[0], size: fontSize(d[1])})))
+                .padding(5)
+                .rotate(() => ~~(Math.random() * 2) * 90)
+                .font("Impact")
+                .fontSize(d => d.size)
+                .on("end", draw)
+                .start();
+
+            function draw(words) {
+                d3.select("#wordCloud").selectAll("*").remove();
+                d3.select("#wordCloud")
+                    .append("svg")
+                    .attr("width", 300)
+                    .attr("height", 200)
+                    .append("g")
+                    .attr("transform", "translate(150,100)")
+                    .selectAll("text")
+                    .data(words)
+                    .enter().append("text")
+                    .style("font-size", d => d.size + "px")
+                    .style("font-family", "Impact")
+                    .style("fill", (d, i) => d3.schemeCategory10[i % 10])
+                    .attr("text-anchor", "middle")
+                    .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
+                    .text(d => d.text);
+            }
+        }
+
         function populateFilters() {
-            const locationFilter = d3.select("#locationFilter");
-            const stateFilter = d3.select("#stateFilter");
-            const tagFilter = d3.select
-        function populateFilters() {
-            const locationFilter = d3.select("#locationFilter");
-            const stateFilter = d3.select("#stateFilter");
-            const tagFilter = d3.select("#tagFilter");
+            const filters = {
+                locationFilter: [...new Set(allData.nodes.map(d => d.location).filter(d => d))],
+                stateFilter: [...new Set(allData.nodes.map(d => d.state).filter(d => d))],
+                tagFilter: [...new Set(allData.nodes.flatMap(d => d.tags ? d.tags.split(',') : []).map(tag => tag.trim()).filter(tag => tag))],
+                themeFilter: themes,
+                roleFilter: ["person", "location", "state", "category", "tag"]
+            };
 
-            const locations = [...new Set(allData.nodes.map(d => d.location).filter(d => d))];
-            const states = [...new Set(allData.nodes.map(d => d.state).filter(d => d))];
-            const tags = [...new Set(allData.nodes.flatMap(d => d.tags ? d.tags.split(',') : []).map(tag => tag.trim()).filter(tag => tag))];
-
-            locationFilter.append("option").text("All Locations").attr("value", "");
-            stateFilter.append("option").text("All States").attr("value", "");
-            tagFilter.append("option").text("All Tags").attr("value", "");
-
-            locations.forEach(location => {
-                locationFilter.append("option").text(location).attr("value", location);
+            Object.entries(filters).forEach(([filterId, options]) => {
+                const filter = d3.select(`#${filterId}`);
+                filter.append("option").text(`All ${filterId.replace("Filter", "s")}`).attr("value", "");
+                options.forEach(option => {
+                    filter.append("option").text(option).attr("value", option);
+                });
+                filter.on("change", updateFilters);
             });
-
-            states.forEach(state => {
-                stateFilter.append("option").text(state).attr("value", state);
-            });
-
-            tags.forEach(tag => {
-                tagFilter.append("option").text(tag).attr("value", tag);
-            });
-
-            locationFilter.on("change", updateFilters);
-            stateFilter.on("change", updateFilters);
-            tagFilter.on("change", updateFilters);
         }
 
         function updateFilters() {
-            const selectedLocation = d3.select("#locationFilter").property("value");
-            const selectedState = d3.select("#stateFilter").property("value");
-            const selectedTag = d3.select("#tagFilter").property("value");
+            const filters = {
+                location: d3.select("#locationFilter").property("value"),
+                state: d3.select("#stateFilter").property("value"),
+                tag: d3.select("#tagFilter").property("value"),
+                theme: d3.select("#themeFilter").property("value"),
+                role: d3.select("#roleFilter").property("value")
+            };
 
             data.nodes = allData.nodes.filter(node => {
-                return (selectedLocation === "" || node.location === selectedLocation) &&
-                       (selectedState === "" || node.state === selectedState) &&
-                       (selectedTag === "" || (node.tags && node.tags.includes(selectedTag)));
+                return Object.entries(filters).every(([key, value]) => {
+                    if (value === "") return true;
+                    if (key === "tag") return node.tags && node.tags.includes(value);
+                    if (key === "theme") return node.themes && node.themes.includes(value);
+                    if (key === "role") return node.type === value;
+                    return node[key] === value;
+                });
             });
 
             const validNodeIds = new Set(data.nodes.map(d => d.id));
-            data.links = allData.links.filter(link => validNodeIds.has(link.source) && validNodeIds.has(link.target));
+            data.links = allData.links.filter(link => 
+                validNodeIds.has(link.source.id || link.source) && 
+                validNodeIds.has(link.target.id || link.target)
+            );
 
             updateVisualization();
+            updateWordCloud();
         }
     </script>
 </body>
