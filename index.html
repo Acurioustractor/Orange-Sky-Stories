@@ -7,21 +7,30 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-        #visualization { width: 100%; height: 80vh; border: 1px solid #ddd; }
+        #visualization { width: 100%; height: 70vh; border: 1px solid #ddd; }
         .node { stroke: #fff; stroke-width: 1.5px; }
         .link { stroke: #999; stroke-opacity: 0.6; }
         .tooltip { position: absolute; background: white; border: 1px solid #ddd; padding: 10px; border-radius: 5px; pointer-events: none; }
         .legend { font-size: 12px; }
         .legend rect { stroke-width: 2; }
+        #filters { margin-bottom: 20px; }
     </style>
 </head>
 <body>
+    <div id="filters">
+        <label for="locationFilter">Location:</label>
+        <select id="locationFilter"></select>
+        <label for="stateFilter">State:</label>
+        <select id="stateFilter"></select>
+    </div>
     <div id="visualization"></div>
     <script>
         let data = { nodes: [], links: [] };
+        let allData = { nodes: [], links: [] };
 
         d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS Stories - data.csv").then(function(csvData) {
             processData(csvData);
+            populateFilters();
         }).catch(function(error) {
             console.log("Error loading the CSV file:", error);
         });
@@ -30,7 +39,7 @@
             data = { nodes: [], links: [] }; // Reset data
             csvData.forEach(function(d) {
                 // Add person node
-                addNode(d.Name, 'person', 1);
+                addNode(d.Name, 'person', 1, d.Location, d.State, d.Tags);
                 
                 // Add location node
                 addNode(d.Location, 'location', 2);
@@ -56,18 +65,19 @@
                 addLink(d.Name, d.Category, 1);
             });
 
+            allData = JSON.parse(JSON.stringify(data)); // Store a copy of the complete data
             updateVisualization();
         }
 
-        function addNode(id, type, group) {
+        function addNode(id, type, group, location = null, state = null, tags = null) {
             if (!data.nodes.some(n => n.id === id)) {
-                data.nodes.push({id: id, type: type, group: group});
+                data.nodes.push({ id: id, type: type, group: group, location: location, state: state, tags: tags });
             }
         }
 
         function addLink(source, target, value) {
             if (!data.links.some(l => l.source === source && l.target === target)) {
-                data.links.push({source: source, target: target, value: value});
+                data.links.push({ source: source, target: target, value: value });
             }
         }
 
@@ -159,7 +169,7 @@
                 tooltip.transition()
                     .duration(200)
                     .style("opacity", .9);
-                tooltip.html(`${d.id} (${d.type})`)
+                tooltip.html(`${d.id} (${d.type})<br>Location: ${d.location || 'N/A'}<br>State: ${d.state || 'N/A'}<br>Tags: ${d.tags || 'N/A'}`)
                     .style("left", (event.pageX) + "px")
                     .style("top", (event.pageY - 28) + "px");
             })
@@ -196,6 +206,43 @@
                         case 5: return "Quote";
                     }
                 });
+        }
+
+        function populateFilters() {
+            const locationFilter = d3.select("#locationFilter");
+            const stateFilter = d3.select("#stateFilter");
+
+            const locations = [...new Set(allData.nodes.map(d => d.location).filter(d => d))];
+            const states = [...new Set(allData.nodes.map(d => d.state).filter(d => d))];
+
+            locationFilter.append("option").text("All Locations").attr("value", "");
+            stateFilter.append("option").text("All States").attr("value", "");
+
+            locations.forEach(location => {
+                locationFilter.append("option").text(location).attr("value", location);
+            });
+
+            states.forEach(state => {
+                stateFilter.append("option").text(state).attr("value", state);
+            });
+
+            locationFilter.on("change", updateFilters);
+            stateFilter.on("change", updateFilters);
+        }
+
+        function updateFilters() {
+            const selectedLocation = d3.select("#locationFilter").property("value");
+            const selectedState = d3.select("#stateFilter").property("value");
+
+            data.nodes = allData.nodes.filter(node => {
+                return (selectedLocation === "" || node.location === selectedLocation) &&
+                       (selectedState === "" || node.state === selectedState);
+            });
+
+            const validNodeIds = new Set(data.nodes.map(d => d.id));
+            data.links = allData.links.filter(link => validNodeIds.has(link.source) && validNodeIds.has(link.target));
+
+            updateVisualization();
         }
     </script>
 </body>
