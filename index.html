@@ -30,7 +30,7 @@
         let data = { nodes: [], links: [] };
         let allData = { nodes: [], links: [] };
 
-        d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS Stories - data.csv").then(function(csvData) {
+        d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv").then(function(csvData) {
             processData(csvData);
             populateFilters();
         }).catch(function(error) {
@@ -55,7 +55,7 @@
                 addNode(d.Category, 'category', 4);
                 
                 // Add tags nodes
-                let tags = d.Tags.split(',');
+                let tags = d.Tags ? d.Tags.split(',') : [];
                 tags.forEach(tag => {
                     addNode(tag.trim(), 'tag', 5);
                     tagsSet.add(tag.trim());
@@ -169,7 +169,7 @@
             // Add zoom capabilities 
             const zoom = d3.zoom()
                 .on('zoom', (event) => {
-                    svg.selectAll('g').attr('transform', event.transform);
+                    svg.attr('transform', event.transform);
                 });
 
             svg.call(zoom);
@@ -226,13 +226,15 @@
         function populateFilters() {
             const locationFilter = d3.select("#locationFilter");
             const stateFilter = d3.select("#stateFilter");
+            const tagFilter = d3.select("#tagFilter");
 
-            const locations = [...new Set(allData.nodes.map(d => &#8203;:citation[oaicite:0]{index=0}&#8203;
-            d => d.location).filter(d => d))];
-            const states = [...new Set(allData.nodes.map(d => d.state).filter(d => d))];
+            const locations = [...new Set(allData.nodes.map(d => d.location).filter(d => d))];
+            const states = [...new Set(allData.nodes.map(d => d.state).
+                .filter(d => d))];
 
             locationFilter.append("option").text("All Locations").attr("value", "");
             stateFilter.append("option").text("All States").attr("value", "");
+            tagFilter.append("option").text("All Tags").attr("value", "");
 
             locations.forEach(location => {
                 locationFilter.append("option").text(location).attr("value", location);
@@ -242,14 +244,13 @@
                 stateFilter.append("option").text(state).attr("value", state);
             });
 
+            tagFilter.on("change", updateFilters);
             locationFilter.on("change", updateFilters);
             stateFilter.on("change", updateFilters);
         }
 
         function populateTagFilter(tagsSet) {
             const tagFilter = d3.select("#tagFilter");
-
-            tagFilter.append("option").text("All Tags").attr("value", "");
 
             tagsSet.forEach(tag => {
                 tagFilter.append("option").text(tag).attr("value", tag);
