@@ -383,8 +383,8 @@
                 <h3>Network Analysis</h3>
                 <p>Visible Nodes: ${visibleNodes.length}</p>
                 <p>Visible Connections: ${visibleLinks.length}</p>
-                <p>Most Common Role: ${[...roleCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]}</p>
-                <p>Most Common Theme: ${[...themeCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]}</p>
+                <p>Most Common Role: ${[...roleCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "N/A"}</p>
+                <p>Most Common Theme: ${[...themeCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "N/A"}</p>
             `;
 
             if (selectedNode) {
