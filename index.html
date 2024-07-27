@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orange Sky Network Impact</title>
+    <title>Orange Sky Impact Visualization</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
@@ -14,7 +14,7 @@
             border: 1px solid #ddd;
             padding: 10px;
             pointer-events: none;
-            max-width: 300px;
+            max-width: 200px;
         }
         .controls {
             position: absolute;
@@ -23,13 +23,6 @@
             background: rgba(255,255,255,0.8);
             padding: 10px;
             border-radius: 5px;
-        }
-        #timeline {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 80%;
         }
         #storyPanel {
             position: absolute;
@@ -48,75 +41,110 @@
 <body>
     <div id="visualization"></div>
     <div class="controls">
-        <button id="playButton">Play Timeline</button>
         <select id="themeFilter">
             <option value="all">All Themes</option>
-            <option value="dignity">Dignity</option>
-            <option value="connection">Connection</option>
-            <option value="community">Community</option>
         </select>
         <select id="roleFilter">
             <option value="all">All Roles</option>
-            <option value="friend">Friends</option>
-            <option value="volunteer">Volunteers</option>
-            <option value="provider">Service Providers</option>
         </select>
-        <button id="tourButton">Start Guided Tour</button>
+        <select id="locationFilter">
+            <option value="all">All Locations</option>
+        </select>
     </div>
-    <input type="range" id="timeline" min="2014" max="2024" value="2014" step="1">
     <div id="storyPanel"></div>
     <script>
         const width = window.innerWidth;
         const height = window.innerHeight;
         let data = { nodes: [], links: [] };
-        let currentYear = 2014;
-        let tourSteps = [];
-        let currentTourStep = 0;
+        let themes = [];
+        let roles = [];
+        let locations = [];
 
         const svg = d3.select("#visualization")
             .append("svg")
             .attr("width", width)
             .attr("height", height);
 
-        const colorScale = d3.scaleOrdinal()
-            .domain(["friend", "volunteer", "provider"])
-            .range(["#FF6B6B", "#4ECDC4", "#45B7D1"]);
-
-        const themeColorScale = d3.scaleOrdinal()
-            .domain(["dignity", "connection", "community"])
-            .range(["#FFD700", "#FF69B4", "#32CD32"]);
+        const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
 
         const simulation = d3.forceSimulation()
-            .force("link", d3.forceLink().id(d => d.id))
-            .force("charge", d3.forceManyBody().strength(-50))
-            .force("center", d3.forceCenter(width / 2, height / 2));
+            .force("link", d3.forceLink().id(d => d.id).strength(0.1))
+            .force("charge", d3.forceManyBody().strength(-100))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("collide", d3.forceCollide().radius(d => d.radius + 2));
 
         d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv").then(function(csvData) {
             processData(csvData);
+            createThemeHubs();
             drawNetwork();
             setupControls();
-            createTourSteps();
         }).catch(function(error) {
             console.log("Error loading the CSV file:", error);
         });
 
         function processData(csvData) {
-            data.nodes = csvData.map(d => ({
+            themes = [...new Set(csvData.flatMap(d => d.Tags.split(',').map(t => t.trim())))];
+            roles = [...new Set(csvData.map(d => d.Category))];
+            locations = [...new Set(csvData.map(d => d.Location))];
+
+            data.nodes = csvData.map((d, i) => ({
                 id: d.Name,
-                role: d.Category.toLowerCase(),
-                themes: d.Tags.split(',').map(t => t.trim().toLowerCase()),
+                role: d.Category,
+                themes: d.Tags.split(',').map(t => t.trim()),
+                location: d.Location,
                 quotes: [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']].filter(q => q),
-                year: +d.Year || 2014
+                radius: 5 + Math.random() * 5 // Vary size based on impact (random for now)
             }));
 
-            data.links = [];
+            // Create theme hub nodes
+            themes.forEach(theme => {
+                data.nodes.push({
+                    id: `hub-${theme}`,
+                    isHub: true,
+                    theme: theme,
+                    radius: 15
+                });
+            });
+
+            // Create links
+            data.nodes.forEach(node => {
+                if (!node.isHub) {
+                    node.themes.forEach(theme => {
+                        data.links.push({
+                            source: node.id,
+                            target: `hub-${theme}`,
+                            value: 1
+                        });
+                    });
+                }
+            });
+
+            // Create links between nodes with shared themes
             for (let i = 0; i < data.nodes.length; i++) {
                 for (let j = i + 1; j < data.nodes.length; j++) {
-                    if (data.nodes[i].role === data.nodes[j].role) {
-                        data.links.push({ source: data.nodes[i].id, target: data.nodes[j].id });
+                    const sharedThemes = data.nodes[i].themes?.filter(theme => data.nodes[j].themes?.includes(theme));
+                    if (sharedThemes && sharedThemes.length > 0) {
+                        data.links.push({
+                            source: data.nodes[i].id,
+                            target: data.nodes[j].id,
+                            value: sharedThemes.length
+                        });
                     }
                 }
             }
+        }
+
+        function createThemeHubs() {
+            const hubRadius = Math.min(width, height) / 4;
+            const angleStep = (2 * Math.PI) / themes.length;
+            themes.forEach((theme, i) => {
+                const angle = i * angleStep;
+                const x = width / 2 + hubRadius * Math.cos(angle);
+                const y = height / 2 + hubRadius * Math.sin(angle);
+                const hub = data.nodes.find(n => n.id === `hub-${theme}`);
+                hub.fx = x;
+                hub.fy = y;
+            });
         }
 
         function drawNetwork() {
@@ -124,6 +152,7 @@
                 .selectAll("line")
                 .data(data.links)
                 .enter().append("line")
+                .attr("stroke-width", d => Math.sqrt(d.value))
                 .attr("stroke", "#999")
                 .attr("stroke-opacity", 0.6);
 
@@ -131,8 +160,8 @@
                 .selectAll("circle")
                 .data(data.nodes)
                 .enter().append("circle")
-                .attr("r", 5)
-                .attr("fill", d => colorScale(d.role))
+                .attr("r", d => d.radius)
+                .attr("fill", d => d.isHub ? colorScale(d.theme) : (d.role ? colorScale(d.role) : "#ccc"))
                 .call(d3.drag()
                     .on("start", dragstarted)
                     .on("drag", dragged)
@@ -177,61 +206,59 @@
 
         function dragended(event) {
             if (!event.active) simulation.alphaTarget(0);
-            event.subject.fx = null;
-            event.subject.fy = null;
+            if (!event.subject.isHub) {
+                event.subject.fx = null;
+                event.subject.fy = null;
+            }
         }
 
         function setupControls() {
-            d3.select("#playButton").on("click", playTimeline);
-            d3.select("#themeFilter").on("change", filterByTheme);
-            d3.select("#roleFilter").on("change", filterByRole);
-            d3.select("#timeline").on("input", updateTimeline);
-            d3.select("#tourButton").on("click", startTour);
+            const themeFilter = d3.select("#themeFilter");
+            const roleFilter = d3.select("#roleFilter");
+            const locationFilter = d3.select("#locationFilter");
+
+            themes.forEach(theme => {
+                themeFilter.append("option").text(theme).attr("value", theme);
+            });
+
+            roles.forEach(role => {
+                roleFilter.append("option").text(role).attr("value", role);
+            });
+
+            locations.forEach(location => {
+                locationFilter.append("option").text(location).attr("value", location);
+            });
+
+            themeFilter.on("change", filterNodes);
+            roleFilter.on("change", filterNodes);
+            locationFilter.on("change", filterNodes);
         }
 
-        function playTimeline() {
-            const timeline = d3.select("#timeline");
-            const endYear = +timeline.attr("max");
-            let currentYear = +timeline.property("value");
+        function filterNodes() {
+            const selectedTheme = d3.select("#themeFilter").property("value");
+            const selectedRole = d3.select("#roleFilter").property("value");
+            const selectedLocation = d3.select("#locationFilter").property("value");
 
-            function step() {
-                if (currentYear < endYear) {
-                    currentYear++;
-                    timeline.property("value", currentYear);
-                    updateVisualization(currentYear);
-                    setTimeout(step, 1000);  // Change year every second
-                }
-            }
-
-            step();
-        }
-
-        function updateTimeline() {
-            currentYear = +this.value;
-            updateVisualization(currentYear);
-        }
-
-        function updateVisualization(year) {
             svg.selectAll("circle")
-                .attr("opacity", d => d.year <= year ? 1 : 0.1)
-                .attr("r", d => d.year === year ? 8 : 5);  // Highlight new nodes
-        }
+                .attr("opacity", d => {
+                    if (d.isHub) return 1;
+                    const themeMatch = selectedTheme === "all" || d.themes.includes(selectedTheme);
+                    const roleMatch = selectedRole === "all" || d.role === selectedRole;
+                    const locationMatch = selectedLocation === "all" || d.location === selectedLocation;
+                    return (themeMatch && roleMatch && locationMatch) ? 1 : 0.1;
+                });
 
-        function filterByTheme() {
-            const theme = this.value;
-            svg.selectAll("circle")
-                .attr("opacity", d => theme === "all" || d.themes.includes(theme) ? 1 : 0.1)
-                .attr("stroke", d => theme !== "all" && d.themes.includes(theme) ? themeColorScale(theme) : null)
-                .attr("stroke-width", d => theme !== "all" && d.themes.includes(theme) ? 2 : 0);
-        }
-
-        function filterByRole() {
-            const role = this.value;
-            svg.selectAll("circle")
-                .attr("opacity", d => role === "all" || d.role === role ? 1 : 0.1);
+            svg.selectAll("line")
+                .attr("opacity", d => {
+                    const sourceVisible = svg.select(`circle[id='${d.source.id}']`).attr("opacity") == 1;
+                    const targetVisible = svg.select(`circle[id='${d.target.id}']`).attr("opacity") == 1;
+                    return (sourceVisible && targetVisible) ? 0.6 : 0.1;
+                });
         }
 
         function showTooltip(event, d) {
+            if (d.isHub) return;
+
             const tooltip = d3.select("body").append("div")
                 .attr("class", "tooltip")
                 .style("left", (event.pageX + 10) + "px")
@@ -241,7 +268,7 @@
                 <strong>${d.id}</strong><br>
                 Role: ${d.role}<br>
                 Themes: ${d.themes.join(", ")}<br>
-                Year: ${d.year}<br>
+                Location: ${d.location}<br>
                 ${d.quotes.length > 0 ? `Quote: "${d.quotes[0]}"` : ""}
             `);
         }
@@ -251,43 +278,19 @@
         }
 
         function showStory(event, d) {
+            if (d.isHub) return;
+
             const storyPanel = d3.select("#storyPanel");
             storyPanel.html(`
                 <h3>${d.id}'s Story</h3>
                 <p>Role: ${d.role}</p>
                 <p>Themes: ${d.themes.join(", ")}</p>
-                <p>Year: ${d.year}</p>
+                <p>Location: ${d.location}</p>
                 <h4>Quotes:</h4>
                 <ul>
                     ${d.quotes.map(q => `<li>"${q}"</li>`).join("")}
                 </ul>
             `);
-        }
-
-        function createTourSteps() {
-            tourSteps = [
-                { text: "Welcome to the Orange Sky Network Impact visualization!", action: () => {} },
-                { text: "Here you can see how Orange Sky has grown since 2014.", action: () => d3.select("#timeline").property("value", 2014).dispatch("input") },
-                { text: "Let's filter to show only volunteers.", action: () => d3.select("#roleFilter").property("value", "volunteer").dispatch("change") },
-                { text: "Now, let's highlight connections related to dignity.", action: () => d3.select("#themeFilter").property("value", "dignity").dispatch("change") },
-                { text: "Finally, let's see how the network looks in 2024.", action: () => d3.select("#timeline").property("value", 2024).dispatch("input") }
-            ];
-        }
-
-        function startTour() {
-            currentTourStep = 0;
-            showNextTourStep();
-        }
-
-        function showNextTourStep() {
-            if (currentTourStep < tourSteps.length) {
-                const step = tourSteps[currentTourStep];
-                alert(step.text);
-                step.action();
-                currentTourStep++;
-            } else {
-                alert("Tour completed! Feel free to explore the visualization on your own.");
-            }
         }
     </script>
 </body>
