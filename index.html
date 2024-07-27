@@ -3,167 +3,177 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orange Sky Network Visualization</title>
+    <title>Orange Sky Network Impact</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/d3-cloud@1.2.5/build/d3.layout.cloud.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
     <style>
-        #visualization {
-            width: 100%;
-            height: 600px;
-        }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+        #visualization { width: 100vw; height: 100vh; }
         .tooltip {
             position: absolute;
-            background-color: white;
+            background: white;
             border: 1px solid #ddd;
             padding: 10px;
             pointer-events: none;
+            max-width: 300px;
         }
-        .word-cloud {
-            width: 300px;
-            height: 200px;
+        .controls {
             position: absolute;
             top: 10px;
-            right: 10px;
+            left: 10px;
+            background: rgba(255,255,255,0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #timeline {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+        }
+        #storyPanel {
+            position: absolute;
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 5px;
+            max-width: 300px;
+            max-height: 80%;
+            overflow-y: auto;
         }
     </style>
 </head>
 <body>
-    <div id="filters">
-        <select id="locationFilter"></select>
-        <select id="stateFilter"></select>
-        <select id="tagFilter"></select>
-        <select id="themeFilter"></select>
-        <select id="roleFilter"></select>
-    </div>
     <div id="visualization"></div>
-    <div id="wordCloud" class="word-cloud"></div>
-
+    <div class="controls">
+        <button id="playButton">Play Timeline</button>
+        <select id="themeFilter">
+            <option value="all">All Themes</option>
+            <option value="dignity">Dignity</option>
+            <option value="connection">Connection</option>
+            <option value="community">Community</option>
+        </select>
+        <select id="roleFilter">
+            <option value="all">All Roles</option>
+            <option value="friend">Friends</option>
+            <option value="volunteer">Volunteers</option>
+            <option value="provider">Service Providers</option>
+        </select>
+        <button id="tourButton">Start Guided Tour</button>
+    </div>
+    <input type="range" id="timeline" min="2014" max="2024" value="2014" step="1">
+    <div id="storyPanel"></div>
     <script>
-        let data = { nodes: [], links: [] };
-        let allData = { nodes: [], links: [] };
-        let themes = ["Dignity", "Connection", "Community", "Impact", "Support"];
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        let data, australiaMap;
+        let currentYear = 2014;
+        let tourSteps = [];
+        let currentTourStep = 0;
 
-        d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv").then(function(csvData) {
-            processData(csvData);
-            populateFilters();
-        }).catch(function(error) {
-            console.log("Error loading the CSV file:", error);
+        const svg = d3.select("#visualization")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+
+        const projection = d3.geoMercator()
+            .center([134, -28])
+            .scale(500)
+            .translate([width / 2, height / 2]);
+
+        const path = d3.geoPath().projection(projection);
+
+        const colorScale = d3.scaleOrdinal()
+            .domain(["friend", "volunteer", "provider"])
+            .range(["#FF6B6B", "#4ECDC4", "#45B7D1"]);
+
+        const themeColorScale = d3.scaleOrdinal()
+            .domain(["dignity", "connection", "community"])
+            .range(["#FFD700", "#FF69B4", "#32CD32"]);
+
+        const simulation = d3.forceSimulation()
+            .force("link", d3.forceLink().id(d => d.id))
+            .force("charge", d3.forceManyBody().strength(-50))
+            .force("center", d3.forceCenter(width / 2, height / 2));
+
+        Promise.all([
+            d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"),
+            d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv")
+        ]).then(([mapData, csvData]) => {
+            australiaMap = topojson.feature(mapData, mapData.objects.countries).features
+                .find(d => d.properties.name === "Australia");
+            
+            data = processData(csvData);
+            
+            drawMap();
+            drawNetwork();
+            setupControls();
+            createTourSteps();
         });
 
         function processData(csvData) {
-            data = { nodes: [], links: [] };
-            let tagsSet = new Set();
+            const nodes = csvData.map(d => ({
+                id: d.Name,
+                role: d.Category.toLowerCase(),
+                location: [+d.Longitude, +d.Latitude],
+                themes: d.Tags.split(',').map(t => t.trim().toLowerCase()),
+                quotes: [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']].filter(q => q),
+                year: +d.Year || 2014  // Assuming there's a Year column, default to 2014 if not present
+            }));
 
-            csvData.forEach(function(d) {
-                let nodeThemes = assignThemes(d);
-                addNode(d.Name, 'person', 1, d.Location, d.State, d.Tags, nodeThemes, [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']]);
-                addNode(d.Location, 'location', 2);
-                addNode(d.State, 'state', 3);
-                addNode(d.Category, 'category', 4);
-
-                let tags = d.Tags ? d.Tags.split(',') : [];
-                tags.forEach(tag => {
-                    tag = tag.trim();
-                    addNode(tag, 'tag', 5);
-                    tagsSet.add(tag);
-                    addLink(d.Name, tag, calculateLinkStrength(d.Name, tag));
-                });
-
-                addLink(d.Name, d.Location, calculateLinkStrength(d.Name, d.Location));
-                addLink(d.Name, d.State, calculateLinkStrength(d.Name, d.State));
-                addLink(d.Name, d.Category, calculateLinkStrength(d.Name, d.Category));
-            });
-
-            allData = JSON.parse(JSON.stringify(data));
-            updateVisualization();
-            updateWordCloud();
-        }
-
-        function assignThemes(d) {
-            let nodeThemes = [];
-            if (d.Tags && d.Tags.toLowerCase().includes("dignity")) nodeThemes.push("Dignity");
-            if (d.Tags && d.Tags.toLowerCase().includes("connection")) nodeThemes.push("Connection");
-            if (d.Tags && d.Tags.toLowerCase().includes("community")) nodeThemes.push("Community");
-            if (d.Tags && d.Tags.toLowerCase().includes("impact")) nodeThemes.push("Impact");
-            if (d.Tags && d.Tags.toLowerCase().includes("support")) nodeThemes.push("Support");
-            return nodeThemes;
-        }
-
-        function calculateLinkStrength(source, target) {
-            let sourceNode = data.nodes.find(n => n.id === source);
-            let targetNode = data.nodes.find(n => n.id === target);
-            if (sourceNode && targetNode) {
-                let sharedThemes = sourceNode.themes.filter(theme => targetNode.themes.includes(theme));
-                return 1 + sharedThemes.length * 0.5;
+            const links = [];
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    if (nodes[i].location[0] === nodes[j].location[0] && nodes[i].location[1] === nodes[j].location[1]) {
+                        links.push({ source: nodes[i].id, target: nodes[j].id });
+                    }
+                }
             }
-            return 1;
+
+            return { nodes, links };
         }
 
-        function addNode(id, type, group, location = null, state = null, tags = null, themes = [], quotes = []) {
-            if (!data.nodes.some(n => n.id === id)) {
-                data.nodes.push({ id, type, group, location, state, tags, themes, quotes });
-            }
+        function drawMap() {
+            svg.append("path")
+                .datum(australiaMap)
+                .attr("d", path)
+                .attr("fill", "#f0f0f0")
+                .attr("stroke", "#ccc");
         }
 
-        function addLink(source, target, value) {
-            if (!data.links.some(l => l.source === source && l.target === target)) {
-                data.links.push({ source, target, value });
-            }
-        }
-
-        function updateVisualization() {
-            d3.select("#visualization").selectAll("*").remove();
-
-            const width = document.getElementById('visualization').offsetWidth;
-            const height = document.getElementById('visualization').offsetHeight;
-
-            const color = d3.scaleOrdinal(d3.schemeCategory10);
-
-            const simulation = d3.forceSimulation(data.nodes)
-                .force("link", d3.forceLink(data.links).id(d => d.id).strength(d => d.value))
-                .force("charge", d3.forceManyBody().strength(-100))
-                .force("center", d3.forceCenter(width / 2, height / 2))
-                .force("cluster", forceCluster());
-
-            const svg = d3.select("#visualization")
-                .append("svg")
-                .attr("width", width)
-                .attr("height", height);
-
+        function drawNetwork() {
             const link = svg.append("g")
-                .attr("class", "links")
                 .selectAll("line")
                 .data(data.links)
                 .enter().append("line")
-                .attr("stroke-width", d => Math.sqrt(d.value))
+                .attr("stroke", "#999")
                 .attr("stroke-opacity", 0.6);
 
             const node = svg.append("g")
-                .attr("class", "nodes")
                 .selectAll("circle")
                 .data(data.nodes)
                 .enter().append("circle")
-                .attr("r", d => d.type === 'person' ? 10 : 5)
-                .attr("fill", d => color(d.themes[0] || d.group))
-                .call(d3.drag()
-                    .on("start", dragstarted)
-                    .on("drag", dragged)
-                    .on("end", dragended));
-
-            const label = svg.append("g")
-                .attr("class", "labels")
-                .selectAll("text")
-                .data(data.nodes)
-                .enter().append("text")
-                .attr("dy", ".35em")
-                .text(d => d.id)
-                .style("font-size", "8px")
-                .style("opacity", 0.7);
+                .attr("r", 5)
+                .attr("fill", d => colorScale(d.role))
+                .call(drag(simulation))
+                .on("mouseover", showTooltip)
+                .on("mouseout", hideTooltip)
+                .on("click", showStory);
 
             node.append("title")
-                .text(d => `${d.id} (${d.type})\nThemes: ${d.themes.join(", ")}`);
+                .text(d => d.id);
 
-            simulation.on("tick", () => {
+            simulation
+                .nodes(data.nodes)
+                .on("tick", ticked);
+
+            simulation.force("link")
+                .links(data.links);
+
+            function ticked() {
                 link
                     .attr("x1", d => d.source.x)
                     .attr("y1", d => d.source.y)
@@ -173,12 +183,10 @@
                 node
                     .attr("cx", d => d.x)
                     .attr("cy", d => d.y);
+            }
+        }
 
-                label
-                    .attr("x", d => d.x)
-                    .attr("y", d => d.y);
-            });
-
+        function drag(simulation) {
             function dragstarted(event) {
                 if (!event.active) simulation.alphaTarget(0.3).restart();
                 event.subject.fx = event.subject.x;
@@ -196,142 +204,119 @@
                 event.subject.fy = null;
             }
 
-            const zoom = d3.zoom()
-                .on('zoom', (event) => {
-                    svg.attr('transform', event.transform);
-                });
+            return d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended);
+        }
 
-            svg.call(zoom);
+        function setupControls() {
+            d3.select("#playButton").on("click", playTimeline);
+            d3.select("#themeFilter").on("change", filterByTheme);
+            d3.select("#roleFilter").on("change", filterByRole);
+            d3.select("#timeline").on("input", updateTimeline);
+            d3.select("#tourButton").on("click", startTour);
+        }
 
+        function playTimeline() {
+            const timeline = d3.select("#timeline");
+            const endYear = +timeline.attr("max");
+            let currentYear = +timeline.property("value");
+
+            function step() {
+                if (currentYear < endYear) {
+                    currentYear++;
+                    timeline.property("value", currentYear);
+                    updateVisualization(currentYear);
+                    setTimeout(step, 1000);  // Change year every second
+                }
+            }
+
+            step();
+        }
+
+        function updateTimeline() {
+            currentYear = +this.value;
+            updateVisualization(currentYear);
+        }
+
+        function updateVisualization(year) {
+            svg.selectAll("circle")
+                .attr("opacity", d => d.year <= year ? 1 : 0.1)
+                .attr("r", d => d.year === year ? 8 : 5);  // Highlight new nodes
+        }
+
+        function filterByTheme() {
+            const theme = this.value;
+            svg.selectAll("circle")
+                .attr("opacity", d => theme === "all" || d.themes.includes(theme) ? 1 : 0.1)
+                .attr("stroke", d => theme !== "all" && d.themes.includes(theme) ? themeColorScale(theme) : null)
+                .attr("stroke-width", d => theme !== "all" && d.themes.includes(theme) ? 2 : 0);
+        }
+
+        function filterByRole() {
+            const role = this.value;
+            svg.selectAll("circle")
+                .attr("opacity", d => role === "all" || d.role === role ? 1 : 0.1);
+        }
+
+        function showTooltip(event, d) {
             const tooltip = d3.select("body").append("div")
                 .attr("class", "tooltip")
-                .style("opacity", 0);
+                .style("left", (event.pageX + 10) + "px")
+                .style("top", (event.pageY - 10) + "px");
 
-            node.on("mouseover", (event, d) => {
-                tooltip.transition()
-                    .duration(200)
-                    .style("opacity", .9);
-                tooltip.html(`${d.id} (${d.type})<br>Location: ${d.location || 'N/A'}<br>State: ${d.state || 'N/A'}<br>Tags: ${d.tags || 'N/A'}<br>Themes: ${d.themes.join(", ")}<br>Quotes: ${d.quotes.filter(q => q).join('<br>')}`)
-                    .style("left", (event.pageX) + "px")
-                    .style("top", (event.pageY - 28) + "px");
-            })
-            .on("mouseout", () => {
-                tooltip.transition()
-                    .duration(500)
-                    .style("opacity", 0);
-            });
+            tooltip.html(`
+                <strong>${d.id}</strong><br>
+                Role: ${d.role}<br>
+                Themes: ${d.themes.join(", ")}<br>
+                Year: ${d.year}<br>
+                ${d.quotes.length > 0 ? `Quote: "${d.quotes[0]}"` : ""}
+            `);
+        }
 
-            function forceCluster() {
-                const strength = 0.2;
-                let nodes;
+        function hideTooltip() {
+            d3.select(".tooltip").remove();
+        }
 
-                function force(alpha) {
-                    const centroids = d3.rollup(nodes, v => ({
-                        x: d3.mean(v, d => d.x),
-                        y: d3.mean(v, d => d.y)
-                    }), d => d.themes[0]);
+        function showStory(event, d) {
+            const storyPanel = d3.select("#storyPanel");
+            storyPanel.html(`
+                <h3>${d.id}'s Story</h3>
+                <p>Role: ${d.role}</p>
+                <p>Themes: ${d.themes.join(", ")}</p>
+                <p>Year: ${d.year}</p>
+                <h4>Quotes:</h4>
+                <ul>
+                    ${d.quotes.map(q => `<li>"${q}"</li>`).join("")}
+                </ul>
+            `);
+        }
 
-                    nodes.forEach(d => {
-                        const centroid = centroids.get(d.themes[0]);
-                        if (centroid) {
-                            d.vx += (centroid.x - d.x) * strength * alpha;
-                            d.vy += (centroid.y - d.y) * strength * alpha;
-                        }
-                    });
-                }
+        function createTourSteps() {
+            tourSteps = [
+                { text: "Welcome to the Orange Sky Network Impact visualization!", action: () => {} },
+                { text: "Here you can see how Orange Sky has grown since 2014.", action: () => d3.select("#timeline").property("value", 2014).dispatch("input") },
+                { text: "Let's filter to show only volunteers.", action: () => d3.select("#roleFilter").property("value", "volunteer").dispatch("change") },
+                { text: "Now, let's highlight connections related to dignity.", action: () => d3.select("#themeFilter").property("value", "dignity").dispatch("change") },
+                { text: "Finally, let's see how the network looks in 2024.", action: () => d3.select("#timeline").property("value", 2024).dispatch("input") }
+            ];
+        }
 
-                force.initialize = _ => nodes = _;
+        function startTour() {
+            currentTourStep = 0;
+            showNextTourStep();
+        }
 
-                return force;
+        function showNextTourStep() {
+            if (currentTourStep < tourSteps.length) {
+                const step = tourSteps[currentTourStep];
+                alert(step.text);
+                step.action();
+                currentTourStep++;
+            } else {
+                alert("Tour completed! Feel free to explore the visualization on your own.");
             }
-        }
-
-        function updateWordCloud() {
-            const words = data.nodes.flatMap(d => d.quotes.filter(q => q).join(" ").split(/\s+/));
-            const wordFreq = d3.rollups(words, v => v.length, w => w.toLowerCase())
-                .sort((a, b) => d3.descending(a[1], b[1]))
-                .slice(0, 50);
-
-            const fontSize = d3.scaleLinear()
-                .domain([0, d3.max(wordFreq, d => d[1])])
-                .range([10, 50]);
-
-            d3.layout.cloud()
-                .size([300, 200])
-                .words(wordFreq.map(d => ({text: d[0], size: fontSize(d[1])})))
-                .padding(5)
-                .rotate(() => ~~(Math.random() * 2) * 90)
-                .font("Impact")
-                .fontSize(d => d.size)
-                .on("end", draw)
-                .start();
-
-            function draw(words) {
-                d3.select("#wordCloud").selectAll("*").remove();
-                d3.select("#wordCloud")
-                    .append("svg")
-                    .attr("width", 300)
-                    .attr("height", 200)
-                    .append("g")
-                    .attr("transform", "translate(150,100)")
-                    .selectAll("text")
-                    .data(words)
-                    .enter().append("text")
-                    .style("font-size", d => d.size + "px")
-                    .style("font-family", "Impact")
-                    .style("fill", (d, i) => d3.schemeCategory10[i % 10])
-                    .attr("text-anchor", "middle")
-                    .attr("transform", d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
-                    .text(d => d.text);
-            }
-        }
-
-        function populateFilters() {
-            const filters = {
-                locationFilter: [...new Set(allData.nodes.map(d => d.location).filter(d => d))],
-                stateFilter: [...new Set(allData.nodes.map(d => d.state).filter(d => d))],
-                tagFilter: [...new Set(allData.nodes.flatMap(d => d.tags ? d.tags.split(',') : []).map(tag => tag.trim()).filter(tag => tag))],
-                themeFilter: themes,
-                roleFilter: ["person", "location", "state", "category", "tag"]
-            };
-
-            Object.entries(filters).forEach(([filterId, options]) => {
-                const filter = d3.select(`#${filterId}`);
-                filter.append("option").text(`All ${filterId.replace("Filter", "s")}`).attr("value", "");
-                options.forEach(option => {
-                    filter.append("option").text(option).attr("value", option);
-                });
-                filter.on("change", updateFilters);
-            });
-        }
-
-        function updateFilters() {
-            const filters = {
-                location: d3.select("#locationFilter").property("value"),
-                state: d3.select("#stateFilter").property("value"),
-                tag: d3.select("#tagFilter").property("value"),
-                theme: d3.select("#themeFilter").property("value"),
-                role: d3.select("#roleFilter").property("value")
-            };
-
-            data.nodes = allData.nodes.filter(node => {
-                return Object.entries(filters).every(([key, value]) => {
-                    if (value === "") return true;
-                    if (key === "tag") return node.tags && node.tags.includes(value);
-                    if (key === "theme") return node.themes && node.themes.includes(value);
-                    if (key === "role") return node.type === value;
-                    return node[key] === value;
-                });
-            });
-
-            const validNodeIds = new Set(data.nodes.map(d => d.id));
-            data.links = allData.links.filter(link => 
-                validNodeIds.has(link.source.id || link.source) && 
-                validNodeIds.has(link.target.id || link.target)
-            );
-
-            updateVisualization();
-            updateWordCloud();
         }
     </script>
 </body>
