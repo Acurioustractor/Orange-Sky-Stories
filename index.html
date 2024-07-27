@@ -35,10 +35,36 @@
             max-width: 300px;
             max-height: 80%;
             overflow-y: auto;
+            display: none;
+        }
+        #closeStoryPanel {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            cursor: pointer;
         }
         #explainer {
             position: absolute;
             top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,255,255,0.8);
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            max-width: 600px;
+        }
+        #legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(255,255,255,0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #analysis {
+            position: absolute;
+            bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
             background: rgba(255,255,255,0.8);
@@ -66,7 +92,12 @@
             <option value="all">All Locations</option>
         </select>
     </div>
-    <div id="storyPanel"></div>
+    <div id="storyPanel">
+        <span id="closeStoryPanel">&#10006;</span>
+        <div id="storyContent"></div>
+    </div>
+    <div id="legend"></div>
+    <div id="analysis"></div>
     <script>
         const width = window.innerWidth;
         const height = window.innerHeight;
@@ -83,15 +114,17 @@
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
 
         const simulation = d3.forceSimulation()
-            .force("link", d3.forceLink().id(d => d.id).strength(d => d.value * 0.1))
-            .force("charge", d3.forceManyBody().strength(-200))
+            .force("link", d3.forceLink().id(d => d.id).strength(d => d.value * 0.05))
+            .force("charge", d3.forceManyBody().strength(-300))
             .force("center", d3.forceCenter(width / 2, height / 2))
-            .force("collide", d3.forceCollide().radius(d => d.radius + 5));
+            .force("collide", d3.forceCollide().radius(d => d.radius + 10));
 
         d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv").then(function(csvData) {
             processData(csvData);
             drawNetwork();
             setupControls();
+            createLegend();
+            updateAnalysis();
         }).catch(function(error) {
             console.log("Error loading the CSV file:", error);
         });
@@ -106,10 +139,9 @@
                 themes: d.Tags.split(',').map(t => t.trim()),
                 location: d.Location,
                 quotes: [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']].filter(q => q),
-                radius: 8 + Math.random() * 7 // Increased size
+                radius: 10 + Math.random() * 10
             }));
 
-            // Create links between nodes with shared themes
             for (let i = 0; i < data.nodes.length; i++) {
                 for (let j = i + 1; j < data.nodes.length; j++) {
                     const sharedThemes = data.nodes[i].themes.filter(theme => data.nodes[j].themes.includes(theme));
@@ -123,21 +155,20 @@
                 }
             }
 
-            // Enhanced clustering
             const themeCenters = {};
             themes.forEach((theme, i) => {
                 const angle = (i / themes.length) * 2 * Math.PI;
                 themeCenters[theme] = {
-                    x: width / 2 + Math.cos(angle) * width / 4,
-                    y: height / 2 + Math.sin(angle) * height / 4
+                    x: width / 2 + Math.cos(angle) * width / 3,
+                    y: height / 2 + Math.sin(angle) * height / 3
                 };
             });
 
             data.nodes.forEach(node => {
                 const dominantTheme = node.themes[0];
                 if (dominantTheme && themeCenters[dominantTheme]) {
-                    node.x = themeCenters[dominantTheme].x + (Math.random() - 0.5) * 100;
-                    node.y = themeCenters[dominantTheme].y + (Math.random() - 0.5) * 100;
+                    node.x = themeCenters[dominantTheme].x + (Math.random() - 0.5) * 200;
+                    node.y = themeCenters[dominantTheme].y + (Math.random() - 0.5) * 200;
                 }
             });
         }
@@ -155,7 +186,7 @@
                 .selectAll("line")
                 .data(data.links)
                 .enter().append("line")
-                .attr("stroke-width", d => Math.sqrt(d.value) * 2) // Increased thickness
+                .attr("stroke-width", d => Math.sqrt(d.value) * 2)
                 .attr("stroke", "#999")
                 .attr("stroke-opacity", 0.6);
 
@@ -254,6 +285,8 @@
                     const targetVisible = svg.select(`circle[id='${d.target.id}']`).attr("opacity") == 1;
                     return (sourceVisible && targetVisible) ? 0.6 : 0.1;
                 });
+
+            updateAnalysis();
         }
 
         function showTooltip(event, d) {
@@ -277,7 +310,8 @@
 
         function showStory(event, d) {
             const storyPanel = d3.select("#storyPanel");
-            storyPanel.html(`
+            const storyContent = d3.select("#storyContent");
+            storyContent.html(`
                 <h3>${d.id}'s Story</h3>
                 <p>Role: ${d.role}</p>
                 <p>Themes: ${d.themes.join(", ")}</p>
@@ -286,6 +320,51 @@
                 <ul>
                     ${d.quotes.map(q => `<li>"${q}"</li>`).join("")}
                 </ul>
+            `);
+            storyPanel.style("display", "block");
+        }
+
+        d3.select("#closeStoryPanel").on("click", () => {
+            d3.select("#storyPanel").style("display", "none");
+        });
+
+        d3.select("body").on("click", function(event) {
+            if (event.target.id !== "storyPanel" && !d3.select("#storyPanel").node().contains(event.target)) {
+                d3.select("#storyPanel").style("display", "none");
+            }
+        });
+
+        function createLegend() {
+            const legend = d3.select("#legend");
+            roles.forEach(role => {
+                legend.append("div")
+                    .style("display", "flex")
+                    .style("align-items", "center")
+                    .style("margin-bottom", "5px")
+                    .html(`
+                        <div style="width: 20px; height: 20px; background-color: ${colorScale(role)}; margin-right: 5px;"></div>
+                        <span>${role}</span>
+                    `);
+            });
+        }
+
+        function updateAnalysis() {
+            const visibleNodes = data.nodes.filter(d => d3.select(`circle[id='${d.id}']`).attr("opacity") == 1);
+            const visibleLinks = data.links.filter(d => 
+                visibleNodes.some(n => n.id === d.source.id || n.id === d.source) && 
+                visibleNodes.some(n => n.id === d.target.id || n.id === d.target)
+            );
+
+            const roleCounts = d3.rollup(visibleNodes, v => v.length, d => d.role);
+            const themeCounts = d3.rollup(visibleNodes.flatMap(d => d.themes), v => v.length, d => d);
+
+            const analysisDiv = d3.select("#analysis");
+            analysisDiv.html(`
+                <h3>Network Analysis</h3>
+                <p>Visible Nodes: ${visibleNodes.length}</p>
+                <p>Visible Connections: ${visibleLinks.length}</p>
+                <p>Most Common Role: ${[...roleCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]}</p>
+                <p>Most Common Theme: ${[...themeCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]}</p>
             `);
         }
     </script>
