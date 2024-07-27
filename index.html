@@ -18,7 +18,7 @@
     <script>
         let data = { nodes: [], links: [] };
 
-        d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/orange_sky_data.csv").then(function(csvData) {
+        d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS Stories - data.csv").then(function(csvData) {
             processData(csvData);
         }).catch(function(error) {
             console.log("Error loading the CSV file:", error);
