@@ -36,10 +36,25 @@
             max-height: 80%;
             overflow-y: auto;
         }
+        #explainer {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,255,255,0.8);
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            max-width: 600px;
+        }
     </style>
 </head>
 <body>
     <div id="visualization"></div>
+    <div id="explainer">
+        <h2>Orange Sky Impact Visualization</h2>
+        <p>This visualization shows the interconnected stories of Orange Sky's community. Each node represents a person, colored by their role. The lines between nodes represent shared themes, with thicker lines indicating stronger connections. Use the filters to explore different aspects of the network.</p>
+    </div>
     <div class="controls">
         <select id="themeFilter">
             <option value="all">All Themes</option>
@@ -68,10 +83,10 @@
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
 
         const simulation = d3.forceSimulation()
-            .force("link", d3.forceLink().id(d => d.id).strength(0.1))
-            .force("charge", d3.forceManyBody().strength(-100))
+            .force("link", d3.forceLink().id(d => d.id).strength(d => d.value * 0.1))
+            .force("charge", d3.forceManyBody().strength(-200))
             .force("center", d3.forceCenter(width / 2, height / 2))
-            .force("collide", d3.forceCollide().radius(d => d.radius + 2));
+            .force("collide", d3.forceCollide().radius(d => d.radius + 5));
 
         d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv").then(function(csvData) {
             processData(csvData);
@@ -91,7 +106,7 @@
                 themes: d.Tags.split(',').map(t => t.trim()),
                 location: d.Location,
                 quotes: [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']].filter(q => q),
-                radius: 5 + Math.random() * 5 // Vary size based on impact (random for now)
+                radius: 8 + Math.random() * 7 // Increased size
             }));
 
             // Create links between nodes with shared themes
@@ -107,6 +122,24 @@
                     }
                 }
             }
+
+            // Enhanced clustering
+            const themeCenters = {};
+            themes.forEach((theme, i) => {
+                const angle = (i / themes.length) * 2 * Math.PI;
+                themeCenters[theme] = {
+                    x: width / 2 + Math.cos(angle) * width / 4,
+                    y: height / 2 + Math.sin(angle) * height / 4
+                };
+            });
+
+            data.nodes.forEach(node => {
+                const dominantTheme = node.themes[0];
+                if (dominantTheme && themeCenters[dominantTheme]) {
+                    node.x = themeCenters[dominantTheme].x + (Math.random() - 0.5) * 100;
+                    node.y = themeCenters[dominantTheme].y + (Math.random() - 0.5) * 100;
+                }
+            });
         }
 
         function assignRole(category) {
@@ -114,7 +147,6 @@
             if (roles.includes(category)) {
                 return category;
             }
-            // If the category doesn't match any of the specified roles, assign "supporter" as default
             return "supporter";
         }
 
@@ -123,7 +155,7 @@
                 .selectAll("line")
                 .data(data.links)
                 .enter().append("line")
-                .attr("stroke-width", d => Math.sqrt(d.value))
+                .attr("stroke-width", d => Math.sqrt(d.value) * 2) // Increased thickness
                 .attr("stroke", "#999")
                 .attr("stroke-opacity", 0.6);
 
