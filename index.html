@@ -94,7 +94,6 @@
                 data.links.push({ source: source, target: target, value: value });
             }
         }
-
         function updateVisualization() {
             d3.select("#visualization").selectAll("*").remove();
 
@@ -222,15 +221,14 @@
                     }
                 });
         }
-
         function populateFilters() {
             const locationFilter = d3.select("#locationFilter");
             const stateFilter = d3.select("#stateFilter");
             const tagFilter = d3.select("#tagFilter");
 
             const locations = [...new Set(allData.nodes.map(d => d.location).filter(d => d))];
-            const states = [...new Set(allData.nodes.map(d => d.state).
-                .filter(d => d))];
+            const states = [...new Set(allData.nodes.map(d => d.state).filter(d => d))];
+            const tags = [...new Set(allData.nodes.flatMap(d => d.tags ? d.tags.split(',') : []).map(tag => tag.trim()).filter(tag => tag))];
 
             locationFilter.append("option").text("All Locations").attr("value", "");
             stateFilter.append("option").text("All States").attr("value", "");
@@ -244,18 +242,12 @@
                 stateFilter.append("option").text(state).attr("value", state);
             });
 
-            tagFilter.on("change", updateFilters);
-            locationFilter.on("change", updateFilters);
-            stateFilter.on("change", updateFilters);
-        }
-
-        function populateTagFilter(tagsSet) {
-            const tagFilter = d3.select("#tagFilter");
-
-            tagsSet.forEach(tag => {
+            tags.forEach(tag => {
                 tagFilter.append("option").text(tag).attr("value", tag);
             });
 
+            locationFilter.on("change", updateFilters);
+            stateFilter.on("change", updateFilters);
             tagFilter.on("change", updateFilters);
         }
 
