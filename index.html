@@ -7,7 +7,7 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-        #visualization { width: 100%; height: 70vh; border: 1px solid #ddd; }
+        #visualization { width: 100%; height: 80vh; border: 1px solid #ddd; }
         .node { stroke: #fff; stroke-width: 1.5px; }
         .link { stroke: #999; stroke-opacity: 0.6; }
         .tooltip { position: absolute; background: white; border: 1px solid #ddd; padding: 10px; border-radius: 5px; pointer-events: none; }
@@ -22,6 +22,8 @@
         <select id="locationFilter"></select>
         <label for="stateFilter">State:</label>
         <select id="stateFilter"></select>
+        <label for="tagFilter">Tag:</label>
+        <select id="tagFilter"></select>
     </div>
     <div id="visualization"></div>
     <script>
@@ -37,9 +39,11 @@
 
         function processData(csvData) {
             data = { nodes: [], links: [] }; // Reset data
+            let tagsSet = new Set();
+
             csvData.forEach(function(d) {
                 // Add person node
-                addNode(d.Name, 'person', 1, d.Location, d.State, d.Tags);
+                addNode(d.Name, 'person', 1, d.Location, d.State, d.Tags, [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']]);
                 
                 // Add location node
                 addNode(d.Location, 'location', 2);
@@ -50,11 +54,19 @@
                 // Add category node
                 addNode(d.Category, 'category', 4);
                 
+                // Add tags nodes
+                let tags = d.Tags.split(',');
+                tags.forEach(tag => {
+                    addNode(tag.trim(), 'tag', 5);
+                    tagsSet.add(tag.trim());
+                    addLink(d.Name, tag.trim(), 1);
+                });
+
                 // Add quote nodes and links
                 for (let i = 1; i <= 4; i++) {
                     if (d[`Quote ${i}`]) {
                         const quoteId = `Quote${d.Name}_${i}`;
-                        addNode(quoteId, 'quote', 5);
+                        addNode(quoteId, 'quote', 6);
                         addLink(d.Name, quoteId, 1);
                     }
                 }
@@ -67,11 +79,13 @@
 
             allData = JSON.parse(JSON.stringify(data)); // Store a copy of the complete data
             updateVisualization();
+
+            populateTagFilter(tagsSet);
         }
 
-        function addNode(id, type, group, location = null, state = null, tags = null) {
+        function addNode(id, type, group, location = null, state = null, tags = null, quotes = []) {
             if (!data.nodes.some(n => n.id === id)) {
-                data.nodes.push({ id: id, type: type, group: group, location: location, state: state, tags: tags });
+                data.nodes.push({ id: id, type: type, group: group, location: location, state: state, tags: tags, quotes: quotes });
             }
         }
 
@@ -169,7 +183,7 @@
                 tooltip.transition()
                     .duration(200)
                     .style("opacity", .9);
-                tooltip.html(`${d.id} (${d.type})<br>Location: ${d.location || 'N/A'}<br>State: ${d.state || 'N/A'}<br>Tags: ${d.tags || 'N/A'}`)
+                tooltip.html(`${d.id} (${d.type})<br>Location: ${d.location || 'N/A'}<br>State: ${d.state || 'N/A'}<br>Tags: ${d.tags || 'N/A'}<br>Quotes: ${d.quotes.filter(q => q).join('<br>')}`)
                     .style("left", (event.pageX) + "px")
                     .style("top", (event.pageY - 28) + "px");
             })
@@ -203,7 +217,8 @@
                         case 2: return "Location";
                         case 3: return "State";
                         case 4: return "Category";
-                        case 5: return "Quote";
+                        case 5: return "Tag";
+                        case 6: return "Quote";
                     }
                 });
         }
@@ -212,7 +227,8 @@
             const locationFilter = d3.select("#locationFilter");
             const stateFilter = d3.select("#stateFilter");
 
-            const locations = [...new Set(allData.nodes.map(d => d.location).filter(d => d))];
+            const locations = [...new Set(allData.nodes.map(d => &#8203;:citation[oaicite:0]{index=0}&#8203;
+            d => d.location).filter(d => d))];
             const states = [...new Set(allData.nodes.map(d => d.state).filter(d => d))];
 
             locationFilter.append("option").text("All Locations").attr("value", "");
@@ -230,13 +246,27 @@
             stateFilter.on("change", updateFilters);
         }
 
+        function populateTagFilter(tagsSet) {
+            const tagFilter = d3.select("#tagFilter");
+
+            tagFilter.append("option").text("All Tags").attr("value", "");
+
+            tagsSet.forEach(tag => {
+                tagFilter.append("option").text(tag).attr("value", tag);
+            });
+
+            tagFilter.on("change", updateFilters);
+        }
+
         function updateFilters() {
             const selectedLocation = d3.select("#locationFilter").property("value");
             const selectedState = d3.select("#stateFilter").property("value");
+            const selectedTag = d3.select("#tagFilter").property("value");
 
             data.nodes = allData.nodes.filter(node => {
                 return (selectedLocation === "" || node.location === selectedLocation) &&
-                       (selectedState === "" || node.state === selectedState);
+                       (selectedState === "" || node.state === selectedState) &&
+                       (selectedTag === "" || (node.tags && node.tags.includes(selectedTag)));
             });
 
             const validNodeIds = new Set(data.nodes.map(d => d.id));
