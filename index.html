@@ -1,31 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orange Sky Network Visualization</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-        #visualization { width: 100%; height: 80vh; border: 1px solid #ddd; }
-        .node { stroke: #fff; stroke-width: 1.5px; }
-        .link { stroke: #999; stroke-opacity: 0.6; }
-        .tooltip { position: absolute; background: white; border: 1px solid #ddd; padding: 10px; border-radius: 5px; pointer-events: none; }
-        .legend { font-size: 12px; }
-        .legend rect { stroke-width: 2; }
-        #filters { margin-bottom: 20px; }
-    </style>
-</head>
-<body>
-    <div id="filters">
-        <label for="locationFilter">Location:</label>
-        <select id="locationFilter"></select>
-        <label for="stateFilter">State:</label>
-        <select id="stateFilter"></select>
-        <label for="tagFilter">Tag:</label>
-        <select id="tagFilter"></select>
-    </div>
-    <div id="visualization"></div>
     <script>
         let data = { nodes: [], links: [] };
         let allData = { nodes: [], links: [] };
@@ -133,6 +105,15 @@
                     .on("drag", dragged)
                     .on("end", dragended));
 
+            // Add labels to nodes
+            const text = svg.append("g")
+                .attr("class", "labels")
+                .selectAll("text")
+                .data(data.nodes)
+                .enter().append("text")
+                .attr("dy", -3)
+                .text(d => d.type === 'person' ? d.id : '');
+
             node.append("title")
                 .text(d => `${d.id} (${d.type})`);
 
@@ -146,6 +127,10 @@
                 node
                     .attr("cx", d => d.x)
                     .attr("cy", d => d.y);
+
+                text
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
             });
 
             function dragstarted(event) {
@@ -221,6 +206,10 @@
                     }
                 });
         }
+        function populateFilters() {
+            const locationFilter = d3.select("#locationFilter");
+            const stateFilter = d3.select("#stateFilter");
+            const tagFilter = d3.select
         function populateFilters() {
             const locationFilter = d3.select("#locationFilter");
             const stateFilter = d3.select("#stateFilter");
