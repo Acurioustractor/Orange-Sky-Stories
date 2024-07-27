@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orange Sky Network Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        #visualization { width: 100%; height: 80vh; border: 1px solid #ddd; }
+        .node { stroke: #fff; stroke-width: 1.5px; }
+        .link { stroke: #999; stroke-opacity: 0.6; }
+        .tooltip { position: absolute; background: white; border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div id="visualization"></div>
+    <script>
+        let data = { nodes: [], links: [] };
+
+        d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/orange_sky_data.csv").then(function(csvData) {
+            processData(csvData);
+        }).catch(function(error) {
+            console.log("Error loading the CSV file:", error);
+        });
+
+        function processData(csvData) {
+            data = { nodes: [], links: [] }; // Reset data
+            csvData.forEach(function(d) {
+                // Add person node
+                addNode(d.Name, 'person', 1);
+                
+                // Add location node
+                addNode(d.Location, 'location', 2);
+                
+                // Add state node
+                addNode(d.State, 'state', 3);
+                
+                // Add category node
+                addNode(d.Category, 'category', 4);
+                
+                // Add quote nodes and links
+                for (let i = 1; i <= 4; i++) {
+                    if (d[`Quote ${i}`]) {
+                        const quoteId = `Quote${d.Name}_${i}`;
+                        addNode(quoteId, 'quote', 5);
+                        addLink(d.Name, quoteId, 1);
+                    }
+                }
+                
+                // Add links
+                addLink(d.Name, d.Location, 1);
+                addLink(d.Name, d.State, 1);
+                addLink(d.Name, d.Category, 1);
+            });
+
+            updateVisualization();
+        }
+
+        function addNode(id, type, group) {
+            if (!data.nodes.some(n => n.id === id)) {
+                data.nodes.push({id: id, type: type, group: group});
+            }
+        }
+
+        function addLink(source, target, value) {
+            if (!data.links.some(l => l.source === source && l.target === target)) {
+                data.links.push({source: source, target: target, value: value});
+            }
+        }
+
+        function updateVisualization() {
+            d3.select("#visualization").selectAll("*").remove();
+
+            const width = document.getElementById('visualization').offsetWidth;
+            const height = document.getElementById('visualization').offsetHeight;
+
+            const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+            const simulation = d3.forceSimulation(data.nodes)
+                .force("link", d3.forceLink(data.links).id(d => d.id))
+                .force("charge", d3.forceManyBody())
+                .force("center", d3.forceCenter(width / 2, height / 2));
+
+            const svg = d3.select("#visualization")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            const link = svg.append("g")
+                .selectAll("line")
+                .data(data.links)
+                .enter().append("line")
+                .attr("class", "link")
+                .attr("stroke-width", d => Math.sqrt(d.value));
+
+            const node = svg.append("g")
+                .selectAll("circle")
+                .data(data.nodes)
+                .enter().append("circle")
+                .attr("class", "node")
+                .attr("r", 5)
+                .attr("fill", d => color(d.group))
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            node.append("title")
+                .text(d => d.id);
+
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                node
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+            });
+
+            function dragstarted(event) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                event.subject.fx = event.subject.x;
+                event.subject.fy = event.subject.y;
+            }
+
+            function dragged(event) {
+                event.subject.fx = event.x;
+                event.subject.fy = event.y;
+            }
+
+            function dragended(event) {
+                if (!event.active) simulation.alphaTarget(0);
+                event.subject.fx = null;
+                event.subject.fy = null;
+            }
+
+            // Add zoom capabilities 
+            const zoom = d3.zoom()
+                .on('zoom', (event) => {
+                    svg.selectAll('g').attr('transform', event.transform);
+                });
+
+            svg.call(zoom);
+
+            // Tooltip
+            const tooltip = d3.select("body").append("div")
+                .attr("class", "tooltip")
+                .style("opacity", 0);
+
+            node.on("mouseover", (event, d) => {
+                tooltip.transition()
+                    .duration(200)
+                    .style("opacity", .9);
+                tooltip.html(d.id + "<br/>" + d.type)
+                    .style("left", (event.pageX) + "px")
+                    .style("top", (event.pageY - 28) + "px");
+            })
+            .on("mouseout", (d) => {
+                tooltip.transition()
+                    .duration(500)
+                    .style("opacity", 0);
+            });
+        }
+    </script>
+</body>
+</html>
