@@ -103,8 +103,7 @@
             d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"),
             d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv")
         ]).then(([mapData, csvData]) => {
-            australiaMap = topojson.feature(mapData, mapData.objects.countries).features
-                .find(d => d.properties.name === "Australia");
+            australiaMap = mapData.features.find(d => d.properties.name === "Australia");
             
             data = processData(csvData);
             
@@ -137,11 +136,13 @@
         }
 
         function drawMap() {
-            svg.append("path")
-                .datum(australiaMap)
-                .attr("d", path)
-                .attr("fill", "#f0f0f0")
-                .attr("stroke", "#ccc");
+            if (australiaMap) {
+                svg.append("path")
+                    .datum(australiaMap)
+                    .attr("d", path)
+                    .attr("fill", "#f0f0f0")
+                    .attr("stroke", "#ccc");
+            }
         }
 
         function drawNetwork() {
