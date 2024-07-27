@@ -299,8 +299,7 @@
                 <strong>${d.id}</strong><br>
                 Role: ${d.role}<br>
                 Themes: ${d.themes.join(", ")}<br>
-                Location: ${d.location}<br>
-                ${d.quotes.length > 0 ? `Quote: "${d.quotes[0]}"` : ""}
+                Location: ${d.location}
             `);
         }
 
@@ -311,6 +310,16 @@
         function showStory(event, d) {
             const storyPanel = d3.select("#storyPanel");
             const storyContent = d3.select("#storyContent");
+            
+            // Find related nodes (nodes with shared themes)
+            const relatedNodes = data.nodes.filter(node => 
+                node.id !== d.id && node.themes.some(theme => d.themes.includes(theme))
+            );
+
+            const relatedInfo = relatedNodes.map(node => 
+                `<li>${node.id} (${node.role}) - Shared themes: ${node.themes.filter(theme => d.themes.includes(theme)).join(", ")}</li>`
+            ).join("");
+
             storyContent.html(`
                 <h3>${d.id}'s Story</h3>
                 <p>Role: ${d.role}</p>
@@ -320,17 +329,25 @@
                 <ul>
                     ${d.quotes.map(q => `<li>"${q}"</li>`).join("")}
                 </ul>
+                <h4>Related Connections:</h4>
+                <ul>
+                    ${relatedInfo}
+                </ul>
             `);
             storyPanel.style("display", "block");
+
+            updateAnalysis(d);
         }
 
         d3.select("#closeStoryPanel").on("click", () => {
             d3.select("#storyPanel").style("display", "none");
+            updateAnalysis();
         });
 
         d3.select("body").on("click", function(event) {
             if (event.target.id !== "storyPanel" && !d3.select("#storyPanel").node().contains(event.target)) {
                 d3.select("#storyPanel").style("display", "none");
+                updateAnalysis();
             }
         });
 
@@ -348,7 +365,7 @@
             });
         }
 
-        function updateAnalysis() {
+        function updateAnalysis(selectedNode = null) {
             const visibleNodes = data.nodes.filter(d => d3.select(`circle[id='${d.id}']`).attr("opacity") == 1);
             const visibleLinks = data.links.filter(d => 
                 visibleNodes.some(n => n.id === d.source.id || n.id === d.source) && 
@@ -358,14 +375,60 @@
             const roleCounts = d3.rollup(visibleNodes, v => v.length, d => d.role);
             const themeCounts = d3.rollup(visibleNodes.flatMap(d => d.themes), v => v.length, d => d);
 
-            const analysisDiv = d3.select("#analysis");
-            analysisDiv.html(`
+            let analysisText = `
                 <h3>Network Analysis</h3>
                 <p>Visible Nodes: ${visibleNodes.length}</p>
                 <p>Visible Connections: ${visibleLinks.length}</p>
                 <p>Most Common Role: ${[...roleCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]}</p>
                 <p>Most Common Theme: ${[...themeCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]}</p>
-            `);
+            `;
+
+            if (selectedNode) {
+                const relatedNodes = data
+                function updateAnalysis(selectedNode = null) {
+            const visibleNodes = data.nodes.filter(d => d3.select(`circle[id='${d.id}']`).attr("opacity") == 1);
+            const visibleLinks = data.links.filter(d => 
+                visibleNodes.some(n => n.id === d.source.id || n.id === d.source) && 
+                visibleNodes.some(n => n.id === d.target.id || n.id === d.target)
+            );
+
+            const roleCounts = d3.rollup(visibleNodes, v => v.length, d => d.role);
+            const themeCounts = d3.rollup(visibleNodes.flatMap(d => d.themes), v => v.length, d => d);
+
+            let analysisText = `
+                <h3>Network Analysis</h3>
+                <p>Visible Nodes: ${visibleNodes.length}</p>
+                <p>Visible Connections: ${visibleLinks.length}</p>
+                <p>Most Common Role: ${[...roleCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]}</p>
+                <p>Most Common Theme: ${[...themeCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]}</p>
+            `;
+
+            if (selectedNode) {
+                const relatedNodes = data.nodes.filter(node => 
+                    node.id !== selectedNode.id && node.themes.some(theme => selectedNode.themes.includes(theme))
+                );
+
+                const sharedThemes = selectedNode.themes.filter(theme => 
+                    relatedNodes.some(node => node.themes.includes(theme))
+                );
+
+                analysisText += `
+                    <h4>Selected Node: ${selectedNode.id}</h4>
+                    <p>Role: ${selectedNode.role}</p>
+                    <p>Themes: ${selectedNode.themes.join(", ")}</p>
+                    <p>Related Nodes: ${relatedNodes.length}</p>
+                    <p>Shared Themes: ${sharedThemes.join(", ")}</p>
+                `;
+
+                if (selectedNode.quotes.length > 0) {
+                    analysisText += `
+                        <p>Key Quote: "${selectedNode.quotes[0]}"</p>
+                    `;
+                }
+            }
+
+            const analysisDiv = d3.select("#analysis");
+            analysisDiv.html(analysisText);
         }
     </script>
 </body>
