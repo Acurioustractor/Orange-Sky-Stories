@@ -366,7 +366,11 @@
         }
 
         function updateAnalysis(selectedNode = null) {
-            const visibleNodes = data.nodes.filter(d => d3.select(`circle[id='${d.id}']`).attr("opacity") == 1);
+            const visibleNodes = data.nodes.filter(d => {
+                const circle = svg.select(`circle[id='${d.id}']`);
+                return circle.size() > 0 && circle.attr("opacity") == 1;
+            });
+
             const visibleLinks = data.links.filter(d => 
                 visibleNodes.some(n => n.id === d.source.id || n.id === d.source) && 
                 visibleNodes.some(n => n.id === d.target.id || n.id === d.target)
