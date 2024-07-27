@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Orange Sky Network Impact</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="https://d3js.org/topojson.v3.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
         #visualization { width: 100vw; height: 100vh; }
@@ -69,7 +68,7 @@
     <script>
         const width = window.innerWidth;
         const height = window.innerHeight;
-        let data, australiaMap;
+        let data = { nodes: [], links: [] };
         let currentYear = 2014;
         let tourSteps = [];
         let currentTourStep = 0;
@@ -78,13 +77,6 @@
             .append("svg")
             .attr("width", width)
             .attr("height", height);
-
-        const projection = d3.geoMercator()
-            .center([134, -28])
-            .scale(500)
-            .translate([width / 2, height / 2]);
-
-        const path = d3.geoPath().projection(projection);
 
         const colorScale = d3.scaleOrdinal()
             .domain(["friend", "volunteer", "provider"])
@@ -99,49 +91,31 @@
             .force("charge", d3.forceManyBody().strength(-50))
             .force("center", d3.forceCenter(width / 2, height / 2));
 
-        Promise.all([
-            d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson"),
-            d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv")
-        ]).then(([mapData, csvData]) => {
-            australiaMap = mapData.features.find(d => d.properties.name === "Australia");
-            
-            data = processData(csvData);
-            
-            drawMap();
+        d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv").then(function(csvData) {
+            processData(csvData);
             drawNetwork();
             setupControls();
             createTourSteps();
+        }).catch(function(error) {
+            console.log("Error loading the CSV file:", error);
         });
 
         function processData(csvData) {
-            const nodes = csvData.map(d => ({
+            data.nodes = csvData.map(d => ({
                 id: d.Name,
                 role: d.Category.toLowerCase(),
-                location: [+d.Longitude, +d.Latitude],
                 themes: d.Tags.split(',').map(t => t.trim().toLowerCase()),
                 quotes: [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']].filter(q => q),
-                year: +d.Year || 2014  // Assuming there's a Year column, default to 2014 if not present
+                year: +d.Year || 2014
             }));
 
-            const links = [];
-            for (let i = 0; i < nodes.length; i++) {
-                for (let j = i + 1; j < nodes.length; j++) {
-                    if (nodes[i].location[0] === nodes[j].location[0] && nodes[i].location[1] === nodes[j].location[1]) {
-                        links.push({ source: nodes[i].id, target: nodes[j].id });
+            data.links = [];
+            for (let i = 0; i < data.nodes.length; i++) {
+                for (let j = i + 1; j < data.nodes.length; j++) {
+                    if (data.nodes[i].role === data.nodes[j].role) {
+                        data.links.push({ source: data.nodes[i].id, target: data.nodes[j].id });
                     }
                 }
-            }
-
-            return { nodes, links };
-        }
-
-        function drawMap() {
-            if (australiaMap) {
-                svg.append("path")
-                    .datum(australiaMap)
-                    .attr("d", path)
-                    .attr("fill", "#f0f0f0")
-                    .attr("stroke", "#ccc");
             }
         }
 
@@ -159,7 +133,10 @@
                 .enter().append("circle")
                 .attr("r", 5)
                 .attr("fill", d => colorScale(d.role))
-                .call(drag(simulation))
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended))
                 .on("mouseover", showTooltip)
                 .on("mouseout", hideTooltip)
                 .on("click", showStory);
@@ -187,28 +164,21 @@
             }
         }
 
-        function drag(simulation) {
-            function dragstarted(event) {
-                if (!event.active) simulation.alphaTarget(0.3).restart();
-                event.subject.fx = event.subject.x;
-                event.subject.fy = event.subject.y;
-            }
+        function dragstarted(event) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            event.subject.fx = event.subject.x;
+            event.subject.fy = event.subject.y;
+        }
 
-            function dragged(event) {
-                event.subject.fx = event.x;
-                event.subject.fy = event.y;
-            }
+        function dragged(event) {
+            event.subject.fx = event.x;
+            event.subject.fy = event.y;
+        }
 
-            function dragended(event) {
-                if (!event.active) simulation.alphaTarget(0);
-                event.subject.fx = null;
-                event.subject.fy = null;
-            }
-
-            return d3.drag()
-                .on("start", dragstarted)
-                .on("drag", dragged)
-                .on("end", dragended);
+        function dragended(event) {
+            if (!event.active) simulation.alphaTarget(0);
+            event.subject.fx = null;
+            event.subject.fy = null;
         }
 
         function setupControls() {
