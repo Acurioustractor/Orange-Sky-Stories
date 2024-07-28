@@ -364,54 +364,51 @@
                     `);
             });
         }
-
         function updateAnalysis(selectedNode = null) {
-            const visibleNodes = data.nodes.filter(d => d3.select(`circle[id='${d.id}']`).attr("opacity") == 1);
-            const visibleLinks = data.links.filter(d => 
-                visibleNodes.some(n => n.id === (d.source.id || d.source)) && 
-                visibleNodes.some(n => n.id === (d.target.id || d.target))
-            );
+    const visibleNodes = data.nodes.filter(d => d3.select(`circle[id='${d.id}']`).attr("opacity") == 1);
+    const visibleLinks = data.links.filter(d => 
+        visibleNodes.some(n => n.id === (d.source.id || d.source)) && 
+        visibleNodes.some(n => n.id === (d.target.id || d.target))
+    );
 
-            const roleCounts = d3.rollup(visibleNodes, v => v.length, d => d.role);
-            const themeCounts = d3.rollup(visibleNodes.flatMap(d => d.themes), v => v.length, d => d);
+    const roleCounts = d3.rollup(visibleNodes, v => v.length, d => d.role);
+    const themeCounts = d3.rollup(visibleNodes.flatMap(d => d.themes), v => v.length, d => d);
 
-            const mostCommonRole = [...roleCounts.entries()].sort((a, b) => b[1] - a[1])[0];
-            const mostCommonTheme = [...themeCounts.entries()].sort
-            const mostCommonRole = [...roleCounts.entries()].sort((a, b) => b[1] - a[1])[0];
-            const mostCommonTheme = [...themeCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+    const mostCommonRole = [...roleCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+    const mostCommonTheme = [...themeCounts.entries()].sort((a, b) => b[1] - a[1])[0];
 
-            let analysisText = `
-                <h3>Network Analysis</h3>
-                <p>Visible Nodes: ${visibleNodes.length}</p>
-                <p>Visible Connections: ${visibleLinks.length}</p>
-                <p>Most Common Role: ${mostCommonRole ? mostCommonRole[0] : 'N/A'} (${mostCommonRole ? mostCommonRole[1] : 0} nodes)</p>
-                <p>Most Common Theme: ${mostCommonTheme ? mostCommonTheme[0] : 'N/A'} (${mostCommonTheme ? mostCommonTheme[1] : 0} occurrences)</p>
+    let analysisText = `
+        <h3>Network Analysis</h3>
+        <p>Visible Nodes: ${visibleNodes.length}</p>
+        <p>Visible Connections: ${visibleLinks.length}</p>
+        <p>Most Common Role: ${mostCommonRole ? mostCommonRole[0] : 'N/A'} (${mostCommonRole ? mostCommonRole[1] : 0} nodes)</p>
+        <p>Most Common Theme: ${mostCommonTheme ? mostCommonTheme[0] : 'N/A'} (${mostCommonTheme ? mostCommonTheme[1] : 0} occurrences)</p>
+    `;
+
+    if (selectedNode) {
+        const relatedNodes = visibleNodes.filter(node => 
+            node.id !== selectedNode.id && node.themes.some(theme => selectedNode.themes.includes(theme))
+        );
+        const sharedThemes = selectedNode.themes.filter(theme => 
+            relatedNodes.some(node => node.themes.includes(theme))
+        );
+        analysisText += `
+            <h4>Selected Node: ${selectedNode.id}</h4>
+            <p>Role: ${selectedNode.role}</p>
+            <p>Themes: ${selectedNode.themes.join(", ")}</p>
+            <p>Related Nodes: ${relatedNodes.length}</p>
+            <p>Shared Themes: ${sharedThemes.join(", ")}</p>
+        `;
+        if (selectedNode.quotes && selectedNode.quotes.length > 0) {
+            analysisText += `
+                <p>Key Quote: "${selectedNode.quotes[0]}"</p>
             `;
-
-            if (selectedNode) {
-                const relatedNodes = visibleNodes.filter(node => 
-                    node.id !== selectedNode.id && node.themes.some(theme => selectedNode.themes.includes(theme))
-                );
-                const sharedThemes = selectedNode.themes.filter(theme => 
-                    relatedNodes.some(node => node.themes.includes(theme))
-                );
-                analysisText += `
-                    <h4>Selected Node: ${selectedNode.id}</h4>
-                    <p>Role: ${selectedNode.role}</p>
-                    <p>Themes: ${selectedNode.themes.join(", ")}</p>
-                    <p>Related Nodes: ${relatedNodes.length}</p>
-                    <p>Shared Themes: ${sharedThemes.join(", ")}</p>
-                `;
-                if (selectedNode.quotes && selectedNode.quotes.length > 0) {
-                    analysisText += `
-                        <p>Key Quote: "${selectedNode.quotes[0]}"</p>
-                    `;
-                }
-            }
-
-            const analysisDiv = d3.select("#analysis");
-            analysisDiv.html(analysisText);
         }
+    }
+
+    const analysisDiv = d3.select("#analysis");
+    analysisDiv.html(analysisText);
+}
     </script>
 </body>
 </html>
