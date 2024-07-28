@@ -1,425 +1,312 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orange Sky Impact Visualization</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-        #visualization { width: 100vw; height: 100vh; }
-        .tooltip {
-            position: absolute;
-            background: white;
-            border: 1px solid #ddd;
-            padding: 10px;
-            pointer-events: none;
-            max-width: 200px;
-        }
-        .controls {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(255,255,255,0.8);
-            padding: 10px;
-            border-radius: 5px;
-        }
-        #storyPanel {
-            position: absolute;
-            top: 50%;
-            right: 20px;
-            transform: translateY(-50%);
-            background: rgba(255,255,255,0.9);
-            padding: 20px;
-            border-radius: 5px;
-            max-width: 300px;
-            max-height: 80%;
-            overflow-y: auto;
-            display: none;
-        }
-        #closeStoryPanel {
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            cursor: pointer;
-        }
-        #explainer {
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(255,255,255,0.8);
-            padding: 10px;
-            border-radius: 5px;
-            text-align: center;
-            max-width: 600px;
-        }
-        #legend {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(255,255,255,0.8);
-            padding: 10px;
-            border-radius: 5px;
-        }
-        #analysis {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(255,255,255,0.8);
-            padding: 10px;
-            border-radius: 5px;
-            text-align: center;
-            max-width: 600px;
-        }
-    </style>
-</head>
-<body>
-    <div id="visualization"></div>
-    <div id="explainer">
-        <h2>Orange Sky Impact Visualization</h2>
-        <p>This visualization shows the interconnected stories of Orange Sky's community. Each node represents a person, colored by their role. The lines between nodes represent shared themes, with thicker lines indicating stronger connections. Use the filters to explore different aspects of the network.</p>
-    </div>
-    <div class="controls">
-        <select id="themeFilter">
-            <option value="all">All Themes</option>
-        </select>
-        <select id="roleFilter">
-            <option value="all">All Roles</option>
-        </select>
-        <select id="locationFilter">
-            <option value="all">All Locations</option>
-        </select>
-    </div>
-    <div id="storyPanel">
-        <span id="closeStoryPanel">&#10006;</span>
-        <div id="storyContent"></div>
-    </div>
-    <div id="legend"></div>
-    <div id="analysis"></div>
-    <script>
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        let data = { nodes: [], links: [] };
-        let themes = [];
-        let roles = ["volunteer", "friend", "service provider", "supporter"];
-        let locations = [];
+<script>
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    let data = { nodes: [], links: [] };
+    let themes = [];
+    let roles = ["volunteer", "friend", "service provider", "supporter"];
+    let locations = [];
 
-        const svg = d3.select("#visualization")
-            .append("svg")
-            .attr("width", width)
-            .attr("height", height);
+    const svg = d3.select("#visualization")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
 
-        const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+    const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
 
-        const simulation = d3.forceSimulation()
-            .force("link", d3.forceLink().id(d => d.id).strength(d => d.value * 0.05))
-            .force("charge", d3.forceManyBody().strength(-300))
-            .force("center", d3.forceCenter(width / 2, height / 2))
-            .force("collide", d3.forceCollide().radius(d => d.radius + 10));
+    const simulation = d3.forceSimulation()
+        .force("link", d3.forceLink().id(d => d.id).strength(d => d.value * 0.05))
+        .force("charge", d3.forceManyBody().strength(-300))
+        .force("center", d3.forceCenter(width / 2, height / 2))
+        .force("collide", d3.forceCollide().radius(d => d.radius + 10));
 
-        d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv").then(function(csvData) {
-            processData(csvData);
-            drawNetwork();
-            setupControls();
-            createLegend();
-            updateAnalysis();
-        }).catch(function(error) {
-            console.log("Error loading the CSV file:", error);
+    d3.csv("https://acurioustractor.github.io/Orange-Sky-Stories/OS%20Stories%20-%20data.csv").then(function(csvData) {
+        processData(csvData);
+        drawNetwork();
+        setupControls();
+        createLegend();
+        updateAnalysis();
+    }).catch(function(error) {
+        console.log("Error loading the CSV file:", error);
+    });
+
+    function processData(csvData) {
+        themes = [...new Set(csvData.flatMap(d => d.Tags.split(',').map(t => t.trim())))];
+        locations = [...new Set(csvData.map(d => d.Location))];
+
+        data.nodes = csvData.map((d, i) => ({
+            id: d.Name,
+            role: assignRole(d.Category),
+            themes: d.Tags.split(',').map(t => t.trim()),
+            location: d.Location,
+            quotes: [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']].filter(q => q),
+            radius: 10 + Math.random() * 10
+        }));
+
+        for (let i = 0; i < data.nodes.length; i++) {
+            for (let j = i + 1; j < data.nodes.length; j++) {
+                const sharedThemes = data.nodes[i].themes.filter(theme => data.nodes[j].themes.includes(theme));
+                if (sharedThemes.length > 0) {
+                    data.links.push({
+                        source: data.nodes[i].id,
+                        target: data.nodes[j].id,
+                        value: sharedThemes.length
+                    });
+                }
+            }
+        }
+
+        const themeCenters = {};
+        themes.forEach((theme, i) => {
+            const angle = (i / themes.length) * 2 * Math.PI;
+            themeCenters[theme] = {
+                x: width / 2 + Math.cos(angle) * width / 3,
+                y: height / 2 + Math.sin(angle) * height / 3
+            };
         });
 
-        function processData(csvData) {
-            themes = [...new Set(csvData.flatMap(d => d.Tags.split(',').map(t => t.trim())))];
-            locations = [...new Set(csvData.map(d => d.Location))];
-
-            data.nodes = csvData.map((d, i) => ({
-                id: d.Name,
-                role: assignRole(d.Category),
-                themes: d.Tags.split(',').map(t => t.trim()),
-                location: d.Location,
-                quotes: [d['Quote 1'], d['Quote 2'], d['Quote 3'], d['Quote 4']].filter(q => q),
-                radius: 10 + Math.random() * 10
-            }));
-
-            for (let i = 0; i < data.nodes.length; i++) {
-                for (let j = i + 1; j < data.nodes.length; j++) {
-                    const sharedThemes = data.nodes[i].themes.filter(theme => data.nodes[j].themes.includes(theme));
-                    if (sharedThemes.length > 0) {
-                        data.links.push({
-                            source: data.nodes[i].id,
-                            target: data.nodes[j].id,
-                            value: sharedThemes.length
-                        });
-                    }
-                }
+        data.nodes.forEach(node => {
+            const dominantTheme = node.themes[0];
+            if (dominantTheme && themeCenters[dominantTheme]) {
+                node.x = themeCenters[dominantTheme].x + (Math.random() - 0.5) * 200;
+                node.y = themeCenters[dominantTheme].y + (Math.random() - 0.5) * 200;
             }
+        });
+    }
 
-            const themeCenters = {};
-            themes.forEach((theme, i) => {
-                const angle = (i / themes.length) * 2 * Math.PI;
-                themeCenters[theme] = {
-                    x: width / 2 + Math.cos(angle) * width / 3,
-                    y: height / 2 + Math.sin(angle) * height / 3
-                };
+    function assignRole(category) {
+        category = category.toLowerCase();
+        if (roles.includes(category)) {
+            return category;
+        }
+        return "supporter";
+    }
+
+    function drawNetwork() {
+        const link = svg.append("g")
+            .selectAll("line")
+            .data(data.links)
+            .enter().append("line")
+            .attr("stroke-width", d => Math.sqrt(d.value) * 2)
+            .attr("stroke", "#999")
+            .attr("stroke-opacity", 0.6);
+
+        const node = svg.append("g")
+            .selectAll("circle")
+            .data(data.nodes)
+            .enter().append("circle")
+            .attr("r", d => d.radius)
+            .attr("fill", d => colorScale(d.role))
+            .call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended))
+            .on("mouseover", showTooltip)
+            .on("mouseout", hideTooltip)
+            .on("click", showStory);
+
+        node.append("title")
+            .text(d => d.id);
+
+        simulation
+            .nodes(data.nodes)
+            .on("tick", ticked);
+
+        simulation.force("link")
+            .links(data.links);
+
+        function ticked() {
+            link
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+
+            node
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y);
+        }
+    }
+
+    function dragstarted(event) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        event.subject.fx = event.subject.x;
+        event.subject.fy = event.subject.y;
+    }
+
+    function dragged(event) {
+        event.subject.fx = event.x;
+        event.subject.fy = event.y;
+    }
+
+    function dragended(event) {
+        if (!event.active) simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+    }
+
+    function setupControls() {
+        const themeFilter = d3.select("#themeFilter");
+        const roleFilter = d3.select("#roleFilter");
+        const locationFilter = d3.select("#locationFilter");
+
+        themes.forEach(theme => {
+            themeFilter.append("option").text(theme).attr("value", theme);
+        });
+
+        roles.forEach(role => {
+            roleFilter.append("option").text(role).attr("value", role);
+        });
+
+        locations.forEach(location => {
+            locationFilter.append("option").text(location).attr("value", location);
+        });
+
+        themeFilter.on("change", filterNodes);
+        roleFilter.on("change", filterNodes);
+        locationFilter.on("change", filterNodes);
+    }
+
+    function filterNodes() {
+        const selectedTheme = d3.select("#themeFilter").property("value");
+        const selectedRole = d3.select("#roleFilter").property("value");
+        const selectedLocation = d3.select("#locationFilter").property("value");
+
+        svg.selectAll("circle")
+            .attr("opacity", d => {
+                const themeMatch = selectedTheme === "all" || d.themes.includes(selectedTheme);
+                const roleMatch = selectedRole === "all" || d.role === selectedRole;
+                const locationMatch = selectedLocation === "all" || d.location === selectedLocation;
+                return (themeMatch && roleMatch && locationMatch) ? 1 : 0.1;
             });
 
-            data.nodes.forEach(node => {
-                const dominantTheme = node.themes[0];
-                if (dominantTheme && themeCenters[dominantTheme]) {
-                    node.x = themeCenters[dominantTheme].x + (Math.random() - 0.5) * 200;
-                    node.y = themeCenters[dominantTheme].y + (Math.random() - 0.5) * 200;
-                }
-            });
-        }
-
-        function assignRole(category) {
-            category = category.toLowerCase();
-            if (roles.includes(category)) {
-                return category;
-            }
-            return "supporter";
-        }
-
-        function drawNetwork() {
-            const link = svg.append("g")
-                .selectAll("line")
-                .data(data.links)
-                .enter().append("line")
-                .attr("stroke-width", d => Math.sqrt(d.value) * 2)
-                .attr("stroke", "#999")
-                .attr("stroke-opacity", 0.6);
-
-            const node = svg.append("g")
-                .selectAll("circle")
-                .data(data.nodes)
-                .enter().append("circle")
-                .attr("r", d => d.radius)
-                .attr("fill", d => colorScale(d.role))
-                .call(d3.drag()
-                    .on("start", dragstarted)
-                    .on("drag", dragged)
-                    .on("end", dragended))
-                .on("mouseover", showTooltip)
-                .on("mouseout", hideTooltip)
-                .on("click", showStory);
-
-            node.append("title")
-                .text(d => d.id);
-
-            simulation
-                .nodes(data.nodes)
-                .on("tick", ticked);
-
-            simulation.force("link")
-                .links(data.links);
-
-            function ticked() {
-                link
-                    .attr("x1", d => d.source.x)
-                    .attr("y1", d => d.source.y)
-                    .attr("x2", d => d.target.x)
-                    .attr("y2", d => d.target.y);
-
-                node
-                    .attr("cx", d => d.x)
-                    .attr("cy", d => d.y);
-            }
-        }
-
-        function dragstarted(event) {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
-            event.subject.fx = event.subject.x;
-            event.subject.fy = event.subject.y;
-        }
-
-        function dragged(event) {
-            event.subject.fx = event.x;
-            event.subject.fy = event.y;
-        }
-
-        function dragended(event) {
-            if (!event.active) simulation.alphaTarget(0);
-            event.subject.fx = null;
-            event.subject.fy = null;
-        }
-
-        function setupControls() {
-            const themeFilter = d3.select("#themeFilter");
-            const roleFilter = d3.select("#roleFilter");
-            const locationFilter = d3.select("#locationFilter");
-
-            themes.forEach(theme => {
-                themeFilter.append("option").text(theme).attr("value", theme);
+        svg.selectAll("line")
+            .attr("opacity", d => {
+                const sourceVisible = svg.select(`circle[id='${d.source.id}']`).attr("opacity") == 1;
+                const targetVisible = svg.select(`circle[id='${d.target.id}']`).attr("opacity") == 1;
+                return (sourceVisible && targetVisible) ? 0.6 : 0.1;
             });
 
-            roles.forEach(role => {
-                roleFilter.append("option").text(role).attr("value", role);
-            });
+        updateAnalysis();
+    }
 
-            locations.forEach(location => {
-                locationFilter.append("option").text(location).attr("value", location);
-            });
+    function showTooltip(event, d) {
+        const tooltip = d3.select("body").append("div")
+            .attr("class", "tooltip")
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY - 10) + "px");
 
-            themeFilter.on("change", filterNodes);
-            roleFilter.on("change", filterNodes);
-            locationFilter.on("change", filterNodes);
-        }
+        tooltip.html(`
+            <strong>${d.id}</strong><br>
+            Role: ${d.role}<br>
+            Themes: ${d.themes.join(", ")}<br>
+            Location: ${d.location}
+        `);
+    }
 
-        function filterNodes() {
-            const selectedTheme = d3.select("#themeFilter").property("value");
-            const selectedRole = d3.select("#roleFilter").property("value");
-            const selectedLocation = d3.select("#locationFilter").property("value");
+    function hideTooltip() {
+        d3.select(".tooltip").remove();
+    }
 
-            svg.selectAll("circle")
-                .attr("opacity", d => {
-                    const themeMatch = selectedTheme === "all" || d.themes.includes(selectedTheme);
-                    const roleMatch = selectedRole === "all" || d.role === selectedRole;
-                    const locationMatch = selectedLocation === "all" || d.location === selectedLocation;
-                    return (themeMatch && roleMatch && locationMatch) ? 1 : 0.1;
-                });
+    function showStory(event, d) {
+        const storyPanel = d3.select("#storyPanel");
+        const storyContent = d3.select("#storyContent");
+        
+        const relatedNodes = data.nodes.filter(node => 
+            node.id !== d.id && node.themes.some(theme => d.themes.includes(theme))
+        );
 
-            svg.selectAll("line")
-                .attr("opacity", d => {
-                    const sourceVisible = svg.select(`circle[id='${d.source.id}']`).attr("opacity") == 1;
-                    const targetVisible = svg.select(`circle[id='${d.target.id}']`).attr("opacity") == 1;
-                    return (sourceVisible && targetVisible) ? 0.6 : 0.1;
-                });
+        const relatedInfo = relatedNodes.map(node => 
+            `<li>${node.id} (${node.role}) - Shared themes: ${node.themes.filter(theme => d.themes.includes(theme)).join(", ")}</li>`
+        ).join("");
 
-            updateAnalysis();
-        }
+        storyContent.html(`
+            <h3>${d.id}'s Story</h3>
+            <p>Role: ${d.role}</p>
+            <p>Themes: ${d.themes.join(", ")}</p>
+            <p>Location: ${d.location}</p>
+            <h4>Quotes:</h4>
+            <ul>
+                ${d.quotes.map(q => `<li>"${q}"</li>`).join("")}
+            </ul>
+            <h4>Related Connections:</h4>
+            <ul>
+                ${relatedInfo}
+            </ul>
+        `);
+        storyPanel.style("display", "block");
 
-        function showTooltip(event, d) {
-            const tooltip = d3.select("body").append("div")
-                .attr("class", "tooltip")
-                .style("left", (event.pageX + 10) + "px")
-                .style("top", (event.pageY - 10) + "px");
+        updateAnalysis(d);
+    }
 
-            tooltip.html(`
-                <strong>${d.id}</strong><br>
-                Role: ${d.role}<br>
-                Themes: ${d.themes.join(", ")}<br>
-                Location: ${d.location}
-            `);
-        }
+    d3.select("#closeStoryPanel").on("click", () => {
+        d3.select("#storyPanel").style("display", "none");
+        updateAnalysis();
+    });
 
-        function hideTooltip() {
-            d3.select(".tooltip").remove();
-        }
-
-        function showStory(event, d) {
-            const storyPanel = d3.select("#storyPanel");
-            const storyContent = d3.select("#storyContent");
-            
-            const relatedNodes = data.nodes.filter(node => 
-                node.id !== d.id && node.themes.some(theme => d.themes.includes(theme))
-            );
-
-            const relatedInfo = relatedNodes.map(node => 
-                `<li>${node.id} (${node.role}) - Shared themes: ${node.themes.filter(theme => d.themes.includes(theme)).join(", ")}</li>`
-            ).join("");
-
-            storyContent.html(`
-                <h3>${d.id}'s Story</h3>
-                <p>Role: ${d.role}</p>
-                <p>Themes: ${d.themes.join(", ")}</p>
-                <p>Location: ${d.location}</p>
-                <h4>Quotes:</h4>
-                <ul>
-                    ${d.quotes.map(q => `<li>"${q}"</li>`).join("")}
-                </ul>
-                <h4>Related Connections:</h4>
-                <ul>
-                    ${relatedInfo}
-                </ul>
-            `);
-            storyPanel.style("display", "block");
-
-            updateAnalysis(d);
-        }
-
-        d3.select("#closeStoryPanel").on("click", () => {
+    d3.select("body").on("click", function(event) {
+        if (event.target.tagName !== "circle" && event.target.id !== "storyPanel" && !d3.select("#storyPanel").node().contains(event.target)) {
             d3.select("#storyPanel").style("display", "none");
             updateAnalysis();
-        });
-
-        d3.select("body").on("click", function(event) {
-            if (event.target.tagName !== "circle" && event.target.id !== "storyPanel" && !d3.select("#storyPanel").node().contains(event.target)) {
-                d3.select("#storyPanel").style("display", "none");
-                updateAnalysis();
-            }
-        });
-
-        function createLegend() {
-            const legend = d3.select("#legend");
-            roles.forEach(role => {
-                legend.append("div")
-                    .style("display", "flex")
-                    .style("align-items", "center")
-                    .style("margin-bottom", "5px")
-                    .html(`
-                        <div style="width: 20px; height: 20px; background-color: ${colorScale(role)}; margin-right: 5px;"></div>
-                        <span>${role}</span>
-                    `);
-            });
         }
+    });
 
-        function updateAnalysis(selectedNode = null) {
-            const visibleNodes = data.nodes.filter(d => d3.select(`circle[id='${d.id}']`).attr("opacity") == 1);
-            const visibleLinks = data.links.filter(d => 
-                visibleNodes.some(n => n.id === (d.source.id || d.source)) && 
-                visibleNodes.some(n => n.id === (d.target.id || d.target))
+    function createLegend() {
+        const legend = d3.select("#legend");
+        roles.forEach(role => {
+            legend.append("div")
+                .style("display", "flex")
+                .style("align-items", "center")
+                .style("margin-bottom", "5px")
+                .html(`
+                    <div style="width: 20px; height: 20px; background-color: ${colorScale(role)}; margin-right: 5px;"></div>
+                    <span>${role}</span>
+                `);
+        });
+    }
+
+    function updateAnalysis(selectedNode = null) {
+        const visibleNodes = data.nodes.filter(d => d3.select(`circle[id='${d.id}']`).attr("opacity") == 1);
+        const visibleLinks = data.links.filter(d => 
+            visibleNodes.some(n => n.id === (d.source.id || d.source)) && 
+            visibleNodes.some(n => n.id === (d.target.id || d.target))
+        );
+
+        const roleCounts = d3.rollup(visibleNodes, v => v.length, d => d.role);
+        const themeCounts = d3.rollup(visibleNodes.flatMap(d => d.themes), v => v.length, d => d);
+
+        const mostCommonRole = [...roleCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+        const mostCommonTheme = [...themeCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+
+        let analysisText = `
+            <h3>Network Analysis</h3>
+            <p>Visible Nodes: ${visibleNodes.length}</p>
+            <p>Visible Connections: ${visibleLinks.length}</p>
+            <p>Most Common Role: ${mostCommonRole ? mostCommonRole[0] : 'N/A'} (${mostCommonRole ? mostCommonRole[1] : 0} nodes)</p>
+            <p>Most Common Theme: ${mostCommonTheme ? mostCommonTheme[0] : 'N/A'} (${mostCommonTheme ? mostCommonTheme[1] : 0} occurrences)</p>
+        `;
+
+        if (selectedNode) {
+            const relatedNodes = visibleNodes.filter(node => 
+                node.id !== selectedNode.id && node.themes.some(theme => selectedNode.themes.includes(theme))
             );
-
-            const roleCounts = d3.rollup(visibleNodes, v => v.length, d => d.role);
-            const themeCounts = d3.rollup(visibleNodes.flatMap(d => d.themes), v => v.length, d => d);
-
-            const mostCommonRole = [...roleCounts.entries()].sort((a, b) => b[1] - a[1])[0];
-            const mostCommonTheme = [...themeCounts.entries()].sort((a, b) => b[1] - a[function updateAnalysis(selectedNode = null) {
-            const visibleNodes = data.nodes.filter(d => d3.select(`circle[id='${d.id}']`).attr("opacity") == 1);
-            const visibleLinks = data.links.filter(d => 
-                visibleNodes.some(n => n.id === (d.source.id || d.source)) && 
-                visibleNodes.some(n => n.id === (d.target.id || d.target))
+            const sharedThemes = selectedNode.themes.filter(theme => 
+                relatedNodes.some(node => node.themes.includes(theme))
             );
-
-            const roleCounts = d3.rollup(visibleNodes, v => v.length, d => d.role);
-            const themeCounts = d3.rollup(visibleNodes.flatMap(d => d.themes), v => v.length, d => d);
-
-            const mostCommonRole = [...roleCounts.entries()].sort((a, b) => b[1] - a[1])[0];
-            const mostCommonTheme = [...themeCounts.entries()].sort((a, b) => b[1] - a[1])[0];
-
-            let analysisText = `
-                <h3>Network Analysis</h3>
-                <p>Visible Nodes: ${visibleNodes.length}</p>
-                <p>Visible Connections: ${visibleLinks.length}</p>
-                <p>Most Common Role: ${mostCommonRole ? mostCommonRole[0] : 'N/A'} (${mostCommonRole ? mostCommonRole[1] : 0} nodes)</p>
-                <p>Most Common Theme: ${mostCommonTheme ? mostCommonTheme[0] : 'N/A'} (${mostCommonTheme ? mostCommonTheme[1] : 0} occurrences)</p>
+            analysisText += `
+                <h4>Selected Node: ${selectedNode.id}</h4>
+                <p>Role: ${selectedNode.role}</p>
+                <p>Themes: ${selectedNode.themes.join(", ")}</p>
+                <p>Related Nodes: ${relatedNodes.length}</p>
+                <p>Shared Themes: ${sharedThemes.join(", ")}</p>
             `;
-
-            if (selectedNode) {
-                const relatedNodes = visibleNodes.filter(node => 
-                    node.id !== selectedNode.id && node.themes.some(theme => selectedNode.themes.includes(theme))
-                );
-                const sharedThemes = selectedNode.themes.filter(theme => 
-                    relatedNodes.some(node => node.themes.includes(theme))
-                );
+            if (selectedNode.quotes && selectedNode.quotes.length > 0) {
                 analysisText += `
-                    <h4>Selected Node: ${selectedNode.id}</h4>
-                    <p>Role: ${selectedNode.role}</p>
-                    <p>Themes: ${selectedNode.themes.join(", ")}</p>
-                    <p>Related Nodes: ${relatedNodes.length}</p>
-                    <p>Shared Themes: ${sharedThemes.join(", ")}</p>
+                    <p>Key Quote: "${selectedNode.quotes[0]}"</p>
                 `;
-                if (selectedNode.quotes && selectedNode.quotes.length > 0) {
-                    analysisText += `
-                        <p>Key Quote: "${selectedNode.quotes[0]}"</p>
-                    `;
-                }
             }
-
-            const analysisDiv = d3.select("#analysis");
-            analysisDiv.html(analysisText);
         }
-    </script>
-</body>
-</html>
+
+        const analysisDiv = d3.select("#analysis");
+        analysisDiv.html(analysisText);
+    }
+</script>
